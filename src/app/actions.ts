@@ -156,8 +156,120 @@ export async function sendShortlistMessageAction(formData: FormData) {
     company_id: company.id,
     author,
     message,
+    is_highlight_reel: false,
   });
   if (error) throw new Error("Could not send that message.");
+}
+
+const SHORTLIST_MEDIA_BUCKET = "shortlist-media";
+// Keeps individual uploads (and the highlight reel built from them) light —
+// enforced here since the client-side check in shortlist-chat.tsx is only a
+// courtesy, not a security boundary (see Server Actions guide: "Validate
+// inputs. Treat FormData... as untrusted").
+const MAX_ATTACHMENT_BYTES: Record<"image" | "video", number> = {
+  image: 8 * 1024 * 1024,
+  video: 20 * 1024 * 1024,
+};
+
+const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "avif", "heic", "heif"]);
+const VIDEO_EXTENSIONS = new Set(["mp4", "webm", "mov", "m4v", "avi", "mkv"]);
+
+// A browser-picked file's MIME type is reliable, but a File built in JS from
+// a MediaRecorder Blob (see ShortlistHighlightReel) isn't guaranteed to
+// survive multipart transport with an exotic type intact — some encodings
+// fall back to "text/plain" for a Content-Type they can't parse. Extension
+// is the fallback signal in that case, not the primary one.
+function attachmentTypeFromFile(file: File): "image" | "video" | null {
+  if (file.type.startsWith("image/")) return "image";
+  if (file.type.startsWith("video/")) return "video";
+
+  const extension = file.name.includes(".") ? file.name.split(".").pop()!.toLowerCase() : "";
+  if (IMAGE_EXTENSIONS.has(extension)) return "image";
+  if (VIDEO_EXTENSIONS.has(extension)) return "video";
+  return null;
+}
+
+/**
+ * Posts a photo or video into a shortlisted venue's discussion thread —
+ * the same append-only thread sendShortlistMessageAction writes to, just
+ * with a Storage object attached instead of (or alongside) typed text.
+ *
+ * Also used to post a generated highlight reel back to the thread (see
+ * ShortlistHighlightReel): the reel is just another video File at that
+ * point, uploaded through the same path.
+ */
+export async function sendShortlistAttachmentAction(formData: FormData): Promise<void> {
+  const company = await getCurrentCompany();
+  if (!company) throw new Error("No active workspace.");
+
+  const shortlistItemId = String(formData.get("shortlistItemId") ?? "");
+  if (!shortlistItemId) throw new Error("Missing shortlist item.");
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) throw new Error("No file provided.");
+
+  const attachmentType = attachmentTypeFromFile(file);
+  if (!attachmentType) throw new Error("Only photos and videos can be attached.");
+
+  const maxBytes = MAX_ATTACHMENT_BYTES[attachmentType];
+  if (file.size > maxBytes) {
+    throw new Error(`${attachmentType === "image" ? "Photos" : "Videos"} can't be larger than ${Math.round(maxBytes / (1024 * 1024))}MB.`);
+  }
+
+  const caption = String(formData.get("message") ?? "").trim();
+  const isHighlightReel = formData.get("isHighlightReel") === "true";
+  if (isHighlightReel && attachmentType !== "video") throw new Error("Highlight reels must be a video.");
+  const author = (await getDisplayName()) ?? "Someone";
+
+  const extension = (file.name.includes(".") ? file.name.split(".").pop()! : attachmentType === "image" ? "jpg" : "webm").toLowerCase();
+  const objectPath = `${company.id}/${shortlistItemId}/${crypto.randomUUID()}.${extension}`;
+
+  // file.type is the browser-reported MIME for a real file pick, but isn't
+  // trustworthy for a synthetic File (see attachmentTypeFromFile) — an
+  // extension-derived content type keeps Storage from serving the object as
+  // (or downstream browsers sniffing it as) something that won't play/render.
+  const EXTENSION_CONTENT_TYPES: Record<string, string> = {
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    png: "image/png",
+    gif: "image/gif",
+    webp: "image/webp",
+    avif: "image/avif",
+    heic: "image/heic",
+    heif: "image/heif",
+    mp4: "video/mp4",
+    webm: "video/webm",
+    mov: "video/quicktime",
+    m4v: "video/x-m4v",
+    avi: "video/x-msvideo",
+    mkv: "video/x-matroska",
+  };
+  const contentType =
+    file.type.startsWith("image/") || file.type.startsWith("video/")
+      ? file.type
+      : (EXTENSION_CONTENT_TYPES[extension] ?? (attachmentType === "image" ? "image/jpeg" : "video/webm"));
+
+  const supabase = createServiceClient();
+  const { error: uploadError } = await supabase.storage.from(SHORTLIST_MEDIA_BUCKET).upload(objectPath, file, {
+    contentType,
+    cacheControl: "31536000",
+  });
+  if (uploadError) throw new Error(`Could not upload that file: ${uploadError.message}`);
+
+  const {
+    data: { publicUrl },
+  } = supabase.storage.from(SHORTLIST_MEDIA_BUCKET).getPublicUrl(objectPath);
+
+  const { error: insertError } = await supabase.from("shortlist_messages").insert({
+    shortlist_item_id: shortlistItemId,
+    company_id: company.id,
+    author,
+    message: caption,
+    attachment_url: publicUrl,
+    attachment_type: attachmentType,
+    is_highlight_reel: isHighlightReel,
+  });
+  if (insertError) throw new Error("Could not send that attachment.");
 }
 
 /**

@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/carousel";
 import { VenueConfirmationCard } from "@/components/venue-confirmation-card";
 import { ShortlistChat } from "@/components/shortlist-chat";
+import { ShortlistHighlightReel } from "@/components/shortlist-highlight-reel";
 import { BackToSearch } from "@/components/back-to-search";
 import type { VenueConfirmationRow, VenuePhotoRow, VenueRoomRow, VenueRow } from "@/lib/supabase/types";
 
@@ -53,6 +54,8 @@ export default async function VenuePage({ params }: VenuePageProps) {
     ? await supabase.from("shortlist_messages").select("*").eq("shortlist_item_id", shortlisted.id).order("created_at", { ascending: true })
     : { data: null };
 
+  const latestHighlightReel = shortlistMessages?.findLast((m) => m.is_highlight_reel) ?? null;
+
   // Not filtered by company: confirmations are facts about the venue that any
   // workspace contributed, and seeing who confirmed what is the point.
   const { data: confirmationRows } = await supabase
@@ -89,7 +92,7 @@ export default async function VenuePage({ params }: VenuePageProps) {
 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{typedVenue.name}</h1>
+          <h1 className="font-[family-name:var(--font-display)] text-3xl font-medium tracking-tight">{typedVenue.name}</h1>
           <p className="text-sm text-muted-foreground">{typedVenue.formatted_address}</p>
           <p className="mt-1 text-sm text-muted-foreground">
             {typedVenue.category}
@@ -107,9 +110,16 @@ export default async function VenuePage({ params }: VenuePageProps) {
       {typedVenue.description && <p className="text-sm leading-relaxed">{typedVenue.description}</p>}
 
       {shortlisted && (
-        <section>
-          <h2 className="mb-2 font-medium">Team discussion</h2>
-          <ShortlistChat shortlistItemId={shortlisted.id} initialMessages={shortlistMessages ?? []} />
+        <section className="flex flex-col gap-3">
+          <ShortlistHighlightReel
+            shortlistItemId={shortlisted.id}
+            venueName={typedVenue.name}
+            initialReel={latestHighlightReel}
+          />
+          <div>
+            <h2 className="mb-2 font-medium">Team discussion</h2>
+            <ShortlistChat shortlistItemId={shortlisted.id} initialMessages={shortlistMessages ?? []} />
+          </div>
         </section>
       )}
 

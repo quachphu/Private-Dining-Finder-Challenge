@@ -111,12 +111,17 @@ export type ShortlistItemRow = {
   created_at: string;
 }
 
+export type ShortlistAttachmentType = "image" | "video";
+
 export type ShortlistMessageRow = {
   id: string;
   shortlist_item_id: string;
   company_id: string;
   author: string;
   message: string;
+  attachment_url: string | null;
+  attachment_type: ShortlistAttachmentType | null;
+  is_highlight_reel: boolean;
   created_at: string;
 }
 

@@ -9,6 +9,7 @@ import { TrustBadge } from "@/components/trust-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ShortlistChat } from "@/components/shortlist-chat";
+import { ShortlistHighlightReel } from "@/components/shortlist-highlight-reel";
 import { priceSignal } from "@/lib/price-signal";
 import { cn } from "@/lib/utils";
 import type { ShortlistItemRow, ShortlistMessageRow, VenuePhotoRow, VenueRoomRow, VenueRow } from "@/lib/supabase/types";
@@ -50,8 +51,8 @@ export default async function ShortlistPage() {
     <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-8">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Shortlist</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="font-[family-name:var(--font-display)] text-3xl font-medium tracking-tight">Shortlist</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             Shared with everyone at {company.name} who has the workspace code — message the team on any venue to weigh
             in, live.
           </p>
@@ -84,7 +85,7 @@ export default async function ShortlistPage() {
             return (
               <div
                 key={item.id}
-                className="flex flex-col gap-3 rounded-lg border bg-card p-4 transition-shadow hover:shadow-sm"
+                className="flex flex-col gap-3 rounded-2xl border bg-card p-4 shadow-sm transition-shadow hover:shadow-md"
               >
                 <div className="flex items-center gap-4">
                   <div className="relative h-16 w-24 shrink-0 overflow-hidden rounded-lg bg-muted">
@@ -125,7 +126,12 @@ export default async function ShortlistPage() {
                   </form>
                 </div>
 
-                <div className="border-t pt-3">
+                <div className="flex flex-col gap-3 border-t pt-3">
+                  <ShortlistHighlightReel
+                    shortlistItemId={item.id}
+                    venueName={item.venue.name}
+                    initialReel={messagesByItem.get(item.id)?.findLast((m) => m.is_highlight_reel) ?? null}
+                  />
                   <ShortlistChat shortlistItemId={item.id} initialMessages={messagesByItem.get(item.id) ?? []} />
                 </div>
               </div>

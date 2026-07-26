@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
-import { MessageCircle, Send } from "lucide-react";
+import { useEffect, useRef, useState, useTransition, type ChangeEvent, type FormEvent } from "react";
+import { Loader2, MessageCircle, Paperclip, Send } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { sendShortlistMessageAction } from "@/app/actions";
+import { sendShortlistAttachmentAction, sendShortlistMessageAction } from "@/app/actions";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import type { ShortlistMessageRow } from "@/lib/supabase/types";
@@ -28,11 +28,20 @@ function initials(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
+// Mirrors MAX_ATTACHMENT_BYTES in src/app/actions.ts — this check just lets
+// the client fail fast with a specific message before spending an upload
+// round-trip; the server action re-enforces the real limit regardless.
+const MAX_CLIENT_BYTES: Record<"image" | "video", number> = {
+  image: 8 * 1024 * 1024,
+  video: 20 * 1024 * 1024,
+};
+
 /**
  * Live discussion thread for one shortlisted venue. Everyone in the workspace
- * viewing this venue's thread sees new messages the moment they're posted,
- * via a Supabase Realtime subscription on shortlist_messages — not just the
- * sender, and not only after a reload.
+ * viewing this venue's thread sees new messages — text, photos, or video —
+ * the moment they're posted, via a Supabase Realtime subscription on
+ * shortlist_messages (see src/components/shortlist-highlight-reel.tsx for
+ * what reads this same thread's attachments back out as a highlight video).
  */
 export function ShortlistChat({
   shortlistItemId,
@@ -44,7 +53,9 @@ export function ShortlistChat({
   const [messages, setMessages] = useState(initialMessages);
   const [text, setText] = useState("");
   const [isPending, startTransition] = useTransition();
+  const [isUploading, setIsUploading] = useState(false);
   const listEndRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const supabase = createBrowserSupabaseClient();
@@ -90,9 +101,42 @@ export function ShortlistChat({
     });
   }
 
+  async function handleFilesSelected(e: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (files.length === 0) return;
+
+    setIsUploading(true);
+    try {
+      for (const file of files) {
+        const kind = file.type.startsWith("video/") ? "video" : file.type.startsWith("image/") ? "image" : null;
+        if (!kind) {
+          toast.error(`${file.name} isn't a photo or video.`);
+          continue;
+        }
+        if (file.size > MAX_CLIENT_BYTES[kind]) {
+          toast.error(`${file.name} is too large (max ${Math.round(MAX_CLIENT_BYTES[kind] / (1024 * 1024))}MB).`);
+          continue;
+        }
+        const formData = new FormData();
+        formData.set("shortlistItemId", shortlistItemId);
+        formData.set("file", file);
+        try {
+          await sendShortlistAttachmentAction(formData);
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : `Could not upload ${file.name}.`);
+        }
+      }
+    } finally {
+      setIsUploading(false);
+    }
+  }
+
+  const busy = isPending || isUploading;
+
   return (
-    <div className="flex flex-col gap-3 rounded-lg border bg-muted/30 p-3">
-      <div className="flex max-h-56 flex-col gap-3 overflow-y-auto pr-1 text-sm">
+    <div className="flex flex-col gap-3 rounded-xl border bg-muted/30 p-3">
+      <div className="flex max-h-64 flex-col gap-3 overflow-y-auto pr-1 text-sm">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center gap-1.5 py-3 text-center">
             <MessageCircle className="size-4 text-muted-foreground/50" />
@@ -108,7 +152,24 @@ export function ShortlistChat({
                 <span className="text-xs font-medium text-foreground">
                   {m.author} <span className="font-normal text-muted-foreground">· {formatTime(m.created_at)}</span>
                 </span>
-                <p className="text-sm leading-snug break-words">{m.message}</p>
+                {m.attachment_url && m.attachment_type === "image" && (
+                  <a href={m.attachment_url} target="_blank" rel="noopener noreferrer" className="mt-1 block w-fit">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- remote Supabase Storage URL, no next/image domain config for it */}
+                    <img
+                      src={m.attachment_url}
+                      alt={m.message || "Shared photo"}
+                      className="max-h-48 rounded-lg border object-cover shadow-sm transition-opacity hover:opacity-90"
+                    />
+                  </a>
+                )}
+                {m.attachment_url && m.attachment_type === "video" && (
+                  <video
+                    src={m.attachment_url}
+                    controls
+                    className="mt-1 max-h-48 rounded-lg border shadow-sm"
+                  />
+                )}
+                {m.message && <p className="text-sm leading-snug break-words">{m.message}</p>}
               </div>
             </div>
           ))
@@ -117,18 +178,37 @@ export function ShortlistChat({
       </div>
 
       <form onSubmit={handleSubmit} className="flex items-center gap-2 border-t pt-2.5">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,video/*"
+          multiple
+          className="hidden"
+          onChange={handleFilesSelected}
+        />
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="outline"
+          disabled={busy}
+          aria-label="Attach photos or videos"
+          onClick={() => fileInputRef.current?.click()}
+          className="shrink-0"
+        >
+          {isUploading ? <Loader2 className="size-3.5 animate-spin" /> : <Paperclip className="size-3.5" />}
+        </Button>
         <Input
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Message the team about this venue…"
           className="h-8 bg-background text-sm"
-          disabled={isPending}
+          disabled={busy}
         />
         <Button
           type="submit"
           size="icon-sm"
           variant={text.trim() ? "default" : "outline"}
-          disabled={isPending || !text.trim()}
+          disabled={busy || !text.trim()}
           aria-label="Send message"
           className={cn("shrink-0 transition-colors", isPending && "opacity-70")}
         >

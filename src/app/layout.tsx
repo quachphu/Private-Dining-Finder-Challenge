@@ -14,9 +14,10 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// Display serif for the marketing landing page only (headline, wordmark) —
-// a warm, characterful face fitting a dining brand, distinct from Geist
-// (which stays the UI/body font everywhere, including inside the app itself).
+// Display serif for headline moments (marketing landing page, and the
+// primary heading on the shortlist/venue pages) — a warm, characterful face
+// fitting a dining brand, distinct from Geist, which stays the body font and
+// every other UI element everywhere, including inside the app itself.
 const fraunces = Fraunces({
   variable: "--font-display",
   subsets: ["latin"],
