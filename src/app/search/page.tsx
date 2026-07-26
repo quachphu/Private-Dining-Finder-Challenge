@@ -89,25 +89,30 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
       </div>
 
       <div className="flex flex-col gap-6 rounded-xl border bg-card p-5 shadow-sm">
-        <PersonaPicker selected={persona} />
-        <NlSearchBox defaultValue={get("nlQuery")} status={get("nlStatus")} />
-        <AddressPicker
-          searchFormId={SEARCH_FORM_ID}
-          addresses={savedAddresses ?? []}
-          selectedSavedAddressId={savedAddressId}
-          addressQueryDefault={addressQuery}
-          defaultToFirstSaved={isPristine}
-        />
-        <SearchForm
-          formId={SEARCH_FORM_ID}
-          persona={persona}
-          defaultValues={resolveFormDefaults(persona, {
-            headcount: headcountRaw,
-            maxCommuteMinutes: maxCommuteRaw,
-            commuteMode: get("commuteMode"),
-            style: styleRaw,
-          })}
-        />
+        <div className="flex flex-col gap-5">
+          <PersonaPicker selected={persona} />
+          <NlSearchBox defaultValue={get("nlQuery")} status={get("nlStatus")} />
+        </div>
+
+        <div className="flex flex-col gap-5 border-t pt-5">
+          <AddressPicker
+            searchFormId={SEARCH_FORM_ID}
+            addresses={savedAddresses ?? []}
+            selectedSavedAddressId={savedAddressId}
+            addressQueryDefault={addressQuery}
+            defaultToFirstSaved={isPristine}
+          />
+          <SearchForm
+            formId={SEARCH_FORM_ID}
+            persona={persona}
+            defaultValues={resolveFormDefaults(persona, {
+              headcount: headcountRaw,
+              maxCommuteMinutes: maxCommuteRaw,
+              commuteMode: get("commuteMode"),
+              style: styleRaw,
+            })}
+          />
+        </div>
       </div>
 
       {searchedWithoutOrigin && (

@@ -3,6 +3,7 @@ import { UtensilsCrossed } from "lucide-react";
 import { getCurrentCompany } from "@/lib/workspace";
 import { leaveWorkspaceAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
+import { NavLinks } from "@/components/nav-links";
 
 export async function NavBar() {
   const company = await getCurrentCompany();
@@ -18,14 +19,7 @@ export async function NavBar() {
             </span>
             <span className="hidden sm:inline">Private Dining Finder</span>
           </Link>
-          <nav className="flex items-center gap-4 text-sm text-muted-foreground">
-            <Link href="/search" className="transition-colors duration-150 hover:text-foreground">
-              Search
-            </Link>
-            <Link href="/shortlist" className="transition-colors duration-150 hover:text-foreground">
-              Shortlist
-            </Link>
-          </nav>
+          <NavLinks />
         </div>
         <div className="flex items-center gap-3 text-sm">
           <div className="hidden text-right leading-tight sm:block">

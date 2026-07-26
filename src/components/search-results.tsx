@@ -53,7 +53,7 @@ export async function SearchResults({
         </p>
       ) : (
         <div className="grid gap-4 lg:grid-cols-[1fr_460px]">
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 order-2 lg:order-1">
+          <div className="grid gap-4 self-start sm:grid-cols-2 xl:grid-cols-3 order-2 lg:order-1">
             {outcome.results.map((ranked, i) => (
               <VenueCard
                 key={ranked.venue.id}

@@ -17,7 +17,7 @@ function PreviewFrame({ children, caption }: { children: React.ReactNode; captio
 
   return (
     <div className="mt-16 w-full">
-      <div className="overflow-hidden rounded-2xl border bg-card shadow-2xl shadow-foreground/10">
+      <div className="overflow-hidden rounded-[28px] border bg-card shadow-2xl shadow-foreground/10 ring-1 ring-foreground/[0.03]">
         <div className="flex items-center gap-1.5 border-b bg-muted/40 px-5 py-3.5">
           <span className="size-2.5 rounded-full bg-red-400/70" />
           <span className="size-2.5 rounded-full bg-amber-400/70" />
@@ -178,11 +178,13 @@ export default async function LandingPage() {
 
       <header className="border-b">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-5 lg:px-10">
-          <div className="flex items-center gap-2.5">
+          <div className="group flex items-center gap-2.5 transition-opacity hover:opacity-70">
             <span className="flex size-7 items-center justify-center rounded-md bg-foreground text-background">
               <UtensilsCrossed className="size-3.5" />
             </span>
-            <span className="font-semibold tracking-tight">Private Dining Finder</span>
+            <span className="font-[family-name:var(--font-display)] text-[17px] tracking-tight italic">
+              Private Dining Finder
+            </span>
           </div>
           <Link href="/start" className={buttonVariants({ variant: "outline", size: "sm" })}>
             Get started
@@ -191,11 +193,14 @@ export default async function LandingPage() {
       </header>
 
       <section className="mx-auto flex w-full max-w-[100rem] flex-col items-center px-6 py-20 text-center sm:py-28 lg:px-10">
-        <Badge variant="outline" className="mb-6 gap-1.5 rounded-full px-3 py-1 text-xs font-medium">
+        <Badge
+          variant="outline"
+          className="mb-6 gap-1.5 rounded-full border-white/60 bg-white/40 px-3 py-1 text-xs font-medium shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-white/5"
+        >
           <span className="size-1.5 rounded-full bg-emerald-500" />
           For corporate event planners
         </Badge>
-        <h1 className="max-w-4xl text-5xl font-semibold tracking-tight text-balance sm:text-6xl lg:text-7xl">
+        <h1 className="max-w-4xl font-[family-name:var(--font-display)] text-[clamp(40px,6vw,72px)] leading-[1.05] font-medium tracking-[-0.02em] text-balance">
           Find the right private dining venue in minutes, not calls.
         </h1>
         <p className="mt-6 max-w-xl text-balance text-muted-foreground sm:text-lg">
@@ -207,8 +212,11 @@ export default async function LandingPage() {
             Get started
             <ArrowRight className="size-4" />
           </Link>
-          <span className="text-xs text-muted-foreground">Free to use · No account or card required</span>
+          <Link href="/start?tab=join" className={buttonVariants({ variant: "outline", size: "lg" })}>
+            Already have a workspace code?
+          </Link>
         </div>
+        <span className="mt-3 text-xs text-muted-foreground">Free to use · No account or card required</span>
 
         {/* Streamed separately from the hero: this runs a real search against
             the live pipeline, so it must never delay first paint. */}

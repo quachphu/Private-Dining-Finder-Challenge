@@ -1,14 +1,11 @@
-import Link from "next/link";
 import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentCompany } from "@/lib/workspace";
 import { createServiceClient } from "@/lib/supabase/server";
-import { MessageSquare } from "lucide-react";
 import { addToShortlistAction, removeFromShortlistAction } from "@/app/actions";
 import { TrustBadge } from "@/components/trust-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import {
   Carousel,
@@ -18,6 +15,8 @@ import {
   CarouselPrevious,
 } from "@/components/ui/carousel";
 import { VenueConfirmationCard } from "@/components/venue-confirmation-card";
+import { ShortlistChat } from "@/components/shortlist-chat";
+import { BackToSearch } from "@/components/back-to-search";
 import type { VenueConfirmationRow, VenuePhotoRow, VenueRoomRow, VenueRow } from "@/lib/supabase/types";
 
 type VenuePageProps = {
@@ -50,6 +49,10 @@ export default async function VenuePage({ params }: VenuePageProps) {
     .eq("venue_id", id)
     .maybeSingle();
 
+  const { data: shortlistMessages } = shortlisted
+    ? await supabase.from("shortlist_messages").select("*").eq("shortlist_item_id", shortlisted.id).order("created_at", { ascending: true })
+    : { data: null };
+
   // Not filtered by company: confirmations are facts about the venue that any
   // workspace contributed, and seeing who confirmed what is the point.
   const { data: confirmationRows } = await supabase
@@ -62,9 +65,7 @@ export default async function VenuePage({ params }: VenuePageProps) {
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-8">
-      <Link href="/search" className="text-sm text-muted-foreground hover:text-foreground">
-        ← Back to search
-      </Link>
+      <BackToSearch />
 
       {photos.length > 1 ? (
         <Carousel className="w-full">
@@ -106,24 +107,10 @@ export default async function VenuePage({ params }: VenuePageProps) {
       {typedVenue.description && <p className="text-sm leading-relaxed">{typedVenue.description}</p>}
 
       {shortlisted && (
-        <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3">
-          <form action={addToShortlistAction} className="flex items-center gap-2">
-            <input type="hidden" name="venueId" value={typedVenue.id} />
-            <MessageSquare className="size-4 shrink-0 text-muted-foreground" />
-            <Input
-              name="note"
-              defaultValue={shortlisted.note ?? ""}
-              placeholder="Add a note for the team — e.g. great price, but no AV setup"
-              className="h-8 bg-background text-sm"
-            />
-            <Button type="submit" size="sm" variant="outline">
-              Save
-            </Button>
-          </form>
-          {shortlisted.note && (
-            <p className="pl-6 text-xs text-muted-foreground">Last note from {shortlisted.added_by ?? "a teammate"}</p>
-          )}
-        </div>
+        <section>
+          <h2 className="mb-2 font-medium">Team discussion</h2>
+          <ShortlistChat shortlistItemId={shortlisted.id} initialMessages={shortlistMessages ?? []} />
+        </section>
       )}
 
       <Separator />

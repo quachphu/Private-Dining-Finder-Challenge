@@ -203,16 +203,16 @@ export default async function ComparePage({
         </div>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto rounded-lg border">
         <table className="w-full min-w-[720px] border-separate border-spacing-0 text-sm">
           <thead>
             <tr>
-              <th className="w-40 border-b p-2 text-left align-bottom text-xs font-medium text-muted-foreground">&nbsp;</th>
+              <th className="w-40 border-b bg-muted/30 p-3 text-left align-bottom text-xs font-medium text-muted-foreground">&nbsp;</th>
               {items.map((item) => {
                 const photo = item.venue.photos.find((p) => p.is_primary) ?? item.venue.photos[0];
                 const placeholder = photo ? isPlaceholderPhoto(photo.url) : false;
                 return (
-                  <th key={item.id} className="border-b p-2 text-left align-bottom">
+                  <th key={item.id} className="border-b p-3 text-left align-bottom">
                     <div className="relative mb-2 h-24 w-full overflow-hidden rounded-md bg-muted">
                       {photo ? (
                         <>
@@ -246,12 +246,12 @@ export default async function ComparePage({
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.label} className="align-top">
-                <th scope="row" className="border-b p-2 text-left text-xs font-medium text-muted-foreground">
+              <tr key={row.label} className="align-top transition-colors hover:bg-muted/20">
+                <th scope="row" className="border-b bg-muted/30 p-3 text-left text-xs font-medium text-muted-foreground">
                   {row.label}
                 </th>
                 {items.map((item) => (
-                  <td key={item.id} className="border-b p-2">
+                  <td key={item.id} className="border-b p-3">
                     {row.render(item)}
                   </td>
                 ))}

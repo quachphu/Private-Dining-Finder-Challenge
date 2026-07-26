@@ -131,6 +131,36 @@ export async function addToShortlistAction(formData: FormData) {
 }
 
 /**
+ * Posts a message into a shortlisted venue's discussion thread.
+ *
+ * No revalidatePath here on purpose: this is meant to be read live, over the
+ * shortlist_messages Realtime channel every viewer is already subscribed to
+ * (see src/components/shortlist-chat.tsx), not by re-rendering the page.
+ * Revalidating would just cause a redundant server round-trip for the sender
+ * on top of the Realtime push everyone (including them) already gets.
+ */
+export async function sendShortlistMessageAction(formData: FormData) {
+  const company = await getCurrentCompany();
+  if (!company) throw new Error("No active workspace.");
+
+  const shortlistItemId = String(formData.get("shortlistItemId") ?? "");
+  const message = String(formData.get("message") ?? "").trim();
+  if (!shortlistItemId) throw new Error("Missing shortlist item.");
+  if (!message) throw new Error("Message can't be empty.");
+
+  const author = (await getDisplayName()) ?? "Someone";
+
+  const supabase = createServiceClient();
+  const { error } = await supabase.from("shortlist_messages").insert({
+    shortlist_item_id: shortlistItemId,
+    company_id: company.id,
+    author,
+    message,
+  });
+  if (error) throw new Error("Could not send that message.");
+}
+
+/**
  * Records a figure a planner obtained by contacting the venue directly.
  *
  * Two writes, deliberately:

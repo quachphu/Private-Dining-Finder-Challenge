@@ -74,7 +74,7 @@ npm install
 
 ### 2. Create a Supabase project
 
-Create a project at [supabase.com](https://supabase.com), then apply every migration in `supabase/migrations/` **in filename order** (`0001_init.sql` through `0006_planner_confirmations.sql` — the later ones add the `ai_extracted` and `confirmed_by_planner` trust tiers, menu/dietary trust columns, and the confirmations table). Either:
+Create a project at [supabase.com](https://supabase.com), then apply every migration in `supabase/migrations/` **in filename order** (`0001_init.sql` through `0007_shortlist_messages.sql` — the later ones add the `ai_extracted` and `confirmed_by_planner` trust tiers, menu/dietary trust columns, the confirmations table, and the per-venue shortlist chat). Either:
 
 - Paste each file into the Supabase Studio SQL editor and run them in order, **or**
 - Use the Supabase CLI: `npx supabase link --project-ref <your-project-ref>` then `npx supabase db push`

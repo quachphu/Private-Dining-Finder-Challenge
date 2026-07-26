@@ -111,6 +111,15 @@ export type ShortlistItemRow = {
   created_at: string;
 }
 
+export type ShortlistMessageRow = {
+  id: string;
+  shortlist_item_id: string;
+  company_id: string;
+  author: string;
+  message: string;
+  created_at: string;
+}
+
 type Relationship = {
   foreignKeyName: string;
   columns: string[];
@@ -211,6 +220,26 @@ export type Database = {
             columns: ["venue_id"];
             isOneToOne: false;
             referencedRelation: "venues";
+            referencedColumns: ["id"];
+          },
+        ]
+      >;
+      shortlist_messages: TableDef<
+        ShortlistMessageRow,
+        OptionalNullable<Omit<ShortlistMessageRow, "id" | "created_at">> & { id?: string },
+        [
+          {
+            foreignKeyName: "shortlist_messages_shortlist_item_id_fkey";
+            columns: ["shortlist_item_id"];
+            isOneToOne: false;
+            referencedRelation: "shortlist_items";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "shortlist_messages_company_id_fkey";
+            columns: ["company_id"];
+            isOneToOne: false;
+            referencedRelation: "companies";
             referencedColumns: ["id"];
           },
         ]

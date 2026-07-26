@@ -15,9 +15,12 @@ const FEATURES = [
   { icon: Users, title: "Shared with your team", description: "One code, same saved offices and shortlist for everyone." },
 ];
 
-export default async function StartPage() {
+export default async function StartPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const company = await getCurrentCompany();
   if (company) redirect("/search");
+
+  const { tab } = await searchParams;
+  const defaultTab = tab === "join" ? "join" : "create";
 
   return (
     <div className="relative flex min-h-[calc(100vh-0px)] items-center justify-center overflow-hidden bg-background px-4 py-12 sm:px-6 lg:px-10">
@@ -81,7 +84,7 @@ export default async function StartPage() {
               Set up your company&apos;s workspace, or join one that already exists.
             </p>
 
-            <Tabs defaultValue="create" className="mt-6">
+            <Tabs defaultValue={defaultTab} className="mt-6">
               <TabsList className="w-full">
                 <TabsTrigger value="create" className="flex-1">
                   Create workspace
@@ -110,7 +113,8 @@ export default async function StartPage() {
                     Join workspace
                   </Button>
                   <p className="text-xs text-muted-foreground">
-                    Ask a teammate for the code — they&apos;ll find it at the top of the app once inside.
+                    Returning to a workspace you or a teammate already set up? Enter its code above — it&apos;s shown at
+                    the top of the app once inside, and works from any device.
                   </p>
                 </form>
               </TabsContent>
