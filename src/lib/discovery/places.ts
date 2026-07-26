@@ -9,7 +9,12 @@ export type CandidateVenue = {
   category: string;
   website?: string;
   phone?: string;
-  /** Google's 0-4 price_level, when available */
+  /**
+   * Normalized 0-4 price level. Google's newer API reports this as an enum
+   * (PRICE_LEVEL_MODERATE etc.); it's mapped back onto the 0-4 scale here so
+   * downstream trust/tier logic has a single numeric contract regardless of
+   * which discovery provider produced the candidate.
+   */
   priceLevelGoogle?: number;
   /**
    * A real, location-accurate photo URL — only ever populated from Google
@@ -24,84 +29,113 @@ export type CandidateVenue = {
 
 const GOOGLE_TYPES = ["restaurant", "bar", "banquet_hall", "night_club"] as const;
 
+// Places API (New) requires an explicit field mask; unmasked fields are not
+// returned at all. Asking for website/phone/photos here means one request per
+// type covers everything the scraper and UI need — the legacy implementation
+// had to follow up with a separate Place Details call per candidate.
+const GOOGLE_FIELD_MASK = [
+  "places.id",
+  "places.displayName",
+  "places.formattedAddress",
+  "places.location",
+  "places.websiteUri",
+  "places.nationalPhoneNumber",
+  "places.priceLevel",
+  "places.photos",
+].join(",");
+
+// searchNearby caps a single response at 20 places, so each venue type is
+// requested separately and merged — that's what keeps a dense downtown core
+// (Times Square) from being represented by 20 pizza counters.
+const GOOGLE_MAX_PER_TYPE = 20;
+
+const PRICE_LEVEL_TO_NUMBER: Record<string, number> = {
+  PRICE_LEVEL_FREE: 0,
+  PRICE_LEVEL_INEXPENSIVE: 1,
+  PRICE_LEVEL_MODERATE: 2,
+  PRICE_LEVEL_EXPENSIVE: 3,
+  PRICE_LEVEL_VERY_EXPENSIVE: 4,
+};
+
+type GooglePlace = {
+  id: string;
+  displayName?: { text?: string };
+  formattedAddress?: string;
+  location?: { latitude?: number; longitude?: number };
+  websiteUri?: string;
+  nationalPhoneNumber?: string;
+  priceLevel?: string;
+  photos?: Array<{ name?: string }>;
+};
+
+/**
+ * Places API (New). The legacy `maps.googleapis.com/maps/api/place/*`
+ * endpoints are intentionally not used: Google no longer enables them for
+ * newer Cloud projects, so a legacy call fails outright rather than
+ * degrading.
+ */
 async function discoverViaGooglePlaces(origin: LatLng, radiusMeters: number, apiKey: string): Promise<CandidateVenue[]> {
   const byPlaceId = new Map<string, CandidateVenue>();
 
-  for (const type of GOOGLE_TYPES) {
-    const searchUrl = new URL("https://maps.googleapis.com/maps/api/place/nearbysearch/json");
-    searchUrl.searchParams.set("location", `${origin.lat},${origin.lng}`);
-    searchUrl.searchParams.set("radius", String(radiusMeters));
-    searchUrl.searchParams.set("type", type);
-    searchUrl.searchParams.set("key", apiKey);
-
-    const res = await fetch(searchUrl);
-    if (!res.ok) continue;
-    const data = (await res.json()) as {
-      results: Array<{
-        place_id: string;
-        name: string;
-        vicinity?: string;
-        geometry: { location: { lat: number; lng: number } };
-        price_level?: number;
-      }>;
-    };
-
-    for (const r of data.results ?? []) {
-      if (byPlaceId.has(r.place_id)) continue;
-      byPlaceId.set(r.place_id, {
-        placeSourceId: r.place_id,
-        name: r.name,
-        formattedAddress: r.vicinity ?? "",
-        lat: r.geometry.location.lat,
-        lng: r.geometry.location.lng,
-        category: type.replace("_", " "),
-        priceLevelGoogle: r.price_level,
-      });
-    }
-  }
-
-  // Enrich the top candidates with website/phone/photo via Place Details —
-  // capped to keep quota/latency bounded (this is what makes the scraper
-  // possible, and where the one accurate photo source comes from).
-  const candidates = Array.from(byPlaceId.values()).slice(0, 20);
   await Promise.all(
-    candidates.map(async (candidate) => {
-      const detailsUrl = new URL("https://maps.googleapis.com/maps/api/place/details/json");
-      detailsUrl.searchParams.set("place_id", candidate.placeSourceId);
-      detailsUrl.searchParams.set("fields", "website,formatted_phone_number,formatted_address,photos");
-      detailsUrl.searchParams.set("key", apiKey);
-
+    GOOGLE_TYPES.map(async (type) => {
       try {
-        const res = await fetch(detailsUrl);
-        if (!res.ok) return;
-        const data = (await res.json()) as {
-          result?: {
-            website?: string;
-            formatted_phone_number?: string;
-            formatted_address?: string;
-            photos?: Array<{ photo_reference: string }>;
-          };
-        };
-        if (data.result?.website) candidate.website = data.result.website;
-        if (data.result?.formatted_phone_number) candidate.phone = data.result.formatted_phone_number;
-        if (data.result?.formatted_address) candidate.formattedAddress = data.result.formatted_address;
+        const res = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": apiKey,
+            "X-Goog-FieldMask": GOOGLE_FIELD_MASK,
+          },
+          body: JSON.stringify({
+            includedTypes: [type],
+            maxResultCount: GOOGLE_MAX_PER_TYPE,
+            locationRestriction: {
+              circle: {
+                center: { latitude: origin.lat, longitude: origin.lng },
+                radius: radiusMeters,
+              },
+            },
+          }),
+        });
 
-        const photoReference = data.result?.photos?.[0]?.photo_reference;
-        if (photoReference) {
-          const photoUrl = new URL("https://maps.googleapis.com/maps/api/place/photo");
-          photoUrl.searchParams.set("maxwidth", "1200");
-          photoUrl.searchParams.set("photo_reference", photoReference);
-          photoUrl.searchParams.set("key", apiKey);
-          candidate.photoUrl = photoUrl.toString();
+        if (!res.ok) {
+          console.error(`Google Places searchNearby (${type}) failed: ${res.status} ${await res.text()}`);
+          return;
         }
-      } catch {
-        // Leave candidate without enrichment — it still surfaces as
-        // unverified since the scraper will have nothing to crawl.
+
+        const data = (await res.json()) as { places?: GooglePlace[] };
+        for (const place of data.places ?? []) {
+          const lat = place.location?.latitude;
+          const lng = place.location?.longitude;
+          const name = place.displayName?.text;
+          if (!place.id || !name || lat == null || lng == null) continue;
+          if (byPlaceId.has(place.id)) continue;
+
+          // Photo bytes are served through our own route so the API key is
+          // never embedded in a stored URL or shipped to the browser.
+          const photoName = place.photos?.[0]?.name;
+
+          byPlaceId.set(place.id, {
+            placeSourceId: place.id,
+            name,
+            formattedAddress: place.formattedAddress ?? "",
+            lat,
+            lng,
+            category: type.replace("_", " "),
+            website: place.websiteUri,
+            phone: place.nationalPhoneNumber,
+            priceLevelGoogle: place.priceLevel ? PRICE_LEVEL_TO_NUMBER[place.priceLevel] : undefined,
+            photoUrl: photoName ? `/api/place-photo?name=${encodeURIComponent(photoName)}` : undefined,
+          });
+        }
+      } catch (err) {
+        console.error(`Google Places searchNearby (${type}) threw:`, err);
       }
     })
   );
 
-  return candidates;
+  return Array.from(byPlaceId.values());
 }
 
 const OVERPASS_AMENITIES = "restaurant|bar|nightclub|events_venue|community_centre";
@@ -194,13 +228,21 @@ async function discoverViaOverpass(origin: LatLng, radiusMeters: number): Promis
 
 /**
  * Finds candidate venues near a point. Prefers Google Places (richer
- * metadata, needs a billed API key); falls back to the free, keyless
- * OpenStreetMap Overpass API so the pipeline still works with zero config.
+ * metadata, needs an enabled+billed API key); falls back to the free, keyless
+ * OpenStreetMap Overpass API.
+ *
+ * The fallback also triggers when Google is configured but returns nothing —
+ * a disabled API, quota exhaustion, or a restricted key would otherwise
+ * silently produce an empty search rather than degrading to the free source.
  */
 export async function discoverNearbyVenues(origin: LatLng, radiusMeters: number): Promise<CandidateVenue[]> {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+
   if (apiKey) {
-    return discoverViaGooglePlaces(origin, radiusMeters, apiKey);
+    const candidates = await discoverViaGooglePlaces(origin, radiusMeters, apiKey);
+    if (candidates.length > 0) return candidates;
+    console.error("Google Places returned no candidates — falling back to Overpass.");
   }
+
   return discoverViaOverpass(origin, radiusMeters);
 }

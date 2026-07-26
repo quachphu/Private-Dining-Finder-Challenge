@@ -17,7 +17,8 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from "@/components/ui/carousel";
-import type { VenuePhotoRow, VenueRoomRow, VenueRow } from "@/lib/supabase/types";
+import { VenueConfirmationCard } from "@/components/venue-confirmation-card";
+import type { VenueConfirmationRow, VenuePhotoRow, VenueRoomRow, VenueRow } from "@/lib/supabase/types";
 
 type VenuePageProps = {
   params: Promise<{ id: string }>;
@@ -48,6 +49,16 @@ export default async function VenuePage({ params }: VenuePageProps) {
     .eq("company_id", company.id)
     .eq("venue_id", id)
     .maybeSingle();
+
+  // Not filtered by company: confirmations are facts about the venue that any
+  // workspace contributed, and seeing who confirmed what is the point.
+  const { data: confirmationRows } = await supabase
+    .from("venue_confirmations")
+    .select("*")
+    .eq("venue_id", id)
+    .order("created_at", { ascending: false });
+
+  const confirmations = (confirmationRows ?? []) as VenueConfirmationRow[];
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-8">
@@ -178,13 +189,18 @@ export default async function VenuePage({ params }: VenuePageProps) {
                 </a>
               </li>
             )}
-            {typedVenue.menu_url && (
-              <li>
-                <a href={typedVenue.menu_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                  Menu ↗
-                </a>
-              </li>
-            )}
+            <li className="flex items-center gap-2">
+              {typedVenue.menu_url ? (
+                <>
+                  <a href={typedVenue.menu_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                    Menu ↗
+                  </a>
+                  <TrustBadge level={typedVenue.menu_trust} subject="Menu" />
+                </>
+              ) : (
+                <span className="text-muted-foreground">No menu found on the venue&apos;s site — ask when you call.</span>
+              )}
+            </li>
             {!typedVenue.phone && !typedVenue.email && !typedVenue.website && (
               <li className="text-muted-foreground">No contact info found — search for the venue directly.</li>
             )}
@@ -192,12 +208,29 @@ export default async function VenuePage({ params }: VenuePageProps) {
         </div>
       </section>
 
-      {typedVenue.dietary_notes && (
-        <section>
-          <h2 className="mb-2 font-medium">Dietary accommodations</h2>
-          <p className="text-sm text-muted-foreground">{typedVenue.dietary_notes}</p>
-        </section>
-      )}
+      {/* Rendered even when empty: "we looked and found nothing published" is
+          real information to a planner with dietary requirements, whereas
+          hiding the section leaves them unsure whether it was checked. */}
+      <section>
+        <div className="mb-2 flex items-center gap-2">
+          <h2 className="font-medium">Dietary accommodations</h2>
+          {typedVenue.dietary_notes && <TrustBadge level={typedVenue.dietary_trust} subject="Dietary info" />}
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {typedVenue.dietary_notes ?? "Nothing published on the venue's own site. Confirm requirements directly when you call."}
+        </p>
+      </section>
+
+      <Separator />
+
+      <VenueConfirmationCard
+        venueId={typedVenue.id}
+        venueName={typedVenue.name}
+        venueEmail={typedVenue.email}
+        venuePhone={typedVenue.phone}
+        rooms={rooms}
+        confirmations={confirmations}
+      />
 
       {typedVenue.source_note && (
         <>

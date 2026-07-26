@@ -27,7 +27,18 @@ function expectedMinimumVenues(radiusMeters: number): number {
  * are upserted (refreshing last_checked_at, capacity, price, photo) rather
  * than duplicated, and genuinely new venues in the area get added.
  */
-export async function ensureCoverage(origin: LatLng, radiusMeters: number): Promise<void> {
+export type CoverageSummary = {
+  /** false when cached coverage was fresh enough and no sites were re-fetched. */
+  ranDiscovery: boolean;
+  /** Venues already cached in the search box before this call. */
+  cachedNearby: number;
+  /** Of those, how many were re-checked inside the TTL window. */
+  freshNearby: number;
+  /** Candidate sites actually fetched and scraped, when discovery ran. */
+  scraped: number;
+};
+
+export async function ensureCoverage(origin: LatLng, radiusMeters: number): Promise<CoverageSummary> {
   const supabase = createServiceClient();
   const box = boundingBox(origin, radiusMeters);
 
@@ -43,7 +54,12 @@ export async function ensureCoverage(origin: LatLng, radiusMeters: number): Prom
   const freshCutoff = Date.now() - TTL_DAYS * 24 * 60 * 60 * 1000;
   const freshCount = rows.filter((r) => new Date(r.last_checked_at).getTime() >= freshCutoff).length;
 
-  if (freshCount >= expectedMinimumVenues(radiusMeters)) return;
+  const base = { cachedNearby: rows.length, freshNearby: freshCount };
 
-  await runDiscoveryPipeline(origin, radiusMeters);
+  if (freshCount >= expectedMinimumVenues(radiusMeters)) {
+    return { ...base, ranDiscovery: false, scraped: 0 };
+  }
+
+  const { discovered } = await runDiscoveryPipeline(origin, radiusMeters);
+  return { ...base, ranDiscovery: true, scraped: discovered };
 }

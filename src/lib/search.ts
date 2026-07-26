@@ -3,12 +3,18 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { geocodeAddress } from "@/lib/geo/geocode";
 import { getCommuteMatrix, type CommuteMode, type LatLng } from "@/lib/geo/commute";
 import { boundingBox } from "@/lib/geo/bounding-box";
-import { ensureCoverage } from "@/lib/discovery/ensure-coverage";
+import { ensureCoverage, type CoverageSummary } from "@/lib/discovery/ensure-coverage";
 import { rankVenues, type RankedVenue, type VenueWithRelations } from "@/lib/ranking";
 import type { RoomStyle } from "@/lib/supabase/types";
 
 export type SearchInput = {
-  companyId: string;
+  /**
+   * Omitted for the public landing-page preview, which runs the identical
+   * pipeline but has no workspace to attribute the search to. Making it
+   * optional (rather than forging a company id) keeps the `searches` audit
+   * table meaning exactly one thing: searches a real workspace ran.
+   */
+  companyId?: string;
   addressQuery?: string;
   savedAddressId?: string;
   headcount: number;
@@ -39,7 +45,7 @@ function radiusForCommute(maxCommuteMinutes: number, mode: CommuteMode): number 
 async function resolveOrigin(input: SearchInput): Promise<(LatLng & { label: string }) | null> {
   const supabase = createServiceClient();
 
-  if (input.savedAddressId) {
+  if (input.savedAddressId && input.companyId) {
     const { data } = await supabase
       .from("saved_addresses")
       .select("*")
@@ -57,16 +63,27 @@ async function resolveOrigin(input: SearchInput): Promise<(LatLng & { label: str
   return null;
 }
 
-export async function performSearch(input: SearchInput): Promise<SearchOutcome> {
-  const origin = await resolveOrigin(input);
-  if (!origin) {
-    return { origin: { lat: 0, lng: 0, label: "" }, results: [], searchId: null, error: "Could not find that address. Try adding city and state." };
-  }
+export const ORIGIN_NOT_FOUND = "Could not find that address. Try adding city and state.";
 
+/**
+ * Stage 1 of 3. Split out so the UI can report "found the address" before the
+ * much slower discovery stage has finished — see src/lib/search-stages.ts.
+ */
+export async function resolveSearchOrigin(input: SearchInput): Promise<(LatLng & { label: string }) | null> {
+  return resolveOrigin(input);
+}
+
+/** Stage 2 of 3: make sure the area has been crawled recently enough to search. */
+export async function ensureSearchCoverage(
+  origin: LatLng,
+  input: Pick<SearchInput, "maxCommuteMinutes" | "commuteMode">
+): Promise<CoverageSummary> {
+  return ensureCoverage(origin, radiusForCommute(input.maxCommuteMinutes, input.commuteMode));
+}
+
+/** Stage 3 of 3: measure commute to everything in range, rank it, log the search. */
+export async function completeSearch(input: SearchInput, origin: LatLng & { label: string }): Promise<SearchOutcome> {
   const radiusMeters = radiusForCommute(input.maxCommuteMinutes, input.commuteMode);
-
-  await ensureCoverage(origin, radiusMeters);
-
   const supabase = createServiceClient();
   const box = boundingBox(origin, radiusMeters);
   const { data: venueRows } = await supabase
@@ -97,6 +114,8 @@ export async function performSearch(input: SearchInput): Promise<SearchOutcome> 
     commuteMap
   );
 
+  if (!input.companyId) return { origin, results, searchId: null };
+
   const { data: searchRow } = await supabase
     .from("searches")
     .insert({
@@ -115,4 +134,19 @@ export async function performSearch(input: SearchInput): Promise<SearchOutcome> 
     .single();
 
   return { origin, results, searchId: searchRow?.id ?? null };
+}
+
+/**
+ * Runs all three stages back to back. Used by callers that just want the final
+ * answer (the scenario scripts, the landing-page preview); the search page
+ * drives the stages individually so it can show progress as it happens.
+ */
+export async function performSearch(input: SearchInput): Promise<SearchOutcome> {
+  const origin = await resolveSearchOrigin(input);
+  if (!origin) {
+    return { origin: { lat: 0, lng: 0, label: "" }, results: [], searchId: null, error: ORIGIN_NOT_FOUND };
+  }
+
+  await ensureSearchCoverage(origin, input);
+  return completeSearch(input, origin);
 }

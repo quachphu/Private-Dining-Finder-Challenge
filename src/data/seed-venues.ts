@@ -47,12 +47,23 @@ export type SeedVenue = {
 // Deterministic placeholder photography (picsum.photos, seeded by slug) —
 // stands in for real venue photography, which in production would come
 // from the Google Places Photos API or licensed venue-supplied images.
-// See README for the swap-in path.
+//
+// These are detected at render time by src/lib/photos.ts and visibly labeled
+// "Placeholder image" in the UI. A stock photo captioned as a specific venue's
+// private room is a factual claim about the room a planner is evaluating, so it
+// gets called out rather than passed off as the real thing.
 const photo = (seed: string, alt: string, isPrimary = false): SeedPhoto => ({
   url: `https://picsum.photos/seed/${seed}/1200/800`,
   alt,
   isPrimary,
 });
+
+// Genuine photographs of the venue itself, collected during the manual research
+// pass and committed to /public. Where one of these exists it is the venue's
+// *only* photo: padding it out with picsum filler would mean a "photo tour"
+// that silently mixes one real room with two stock images, which is worse than
+// showing a single accurate one.
+const realPhoto = (file: string, alt: string): SeedPhoto => ({ url: `/${file}`, alt, isPrimary: true });
 
 export const seedVenues: SeedVenue[] = [
   // ---------------------------------------------------------------- NYC
@@ -81,11 +92,7 @@ export const seedVenues: SeedVenue[] = [
         notes: "Seats up to 200; cocktail receptions up to 175. Private entrance, bar, and coat check.",
       },
     ],
-    photos: [
-      photo("carmines-1", "Carmine's private party room table setting", true),
-      photo("carmines-2", "Carmine's family-style Italian platters"),
-      photo("carmines-3", "Carmine's dining room interior"),
-    ],
+    photos: [realPhoto("CarminesItalian.png", "Carmine's Italian Restaurant, Times Square")],
   },
   {
     name: "Dos Caminos — Times Square",
@@ -108,11 +115,7 @@ export const seedVenues: SeedVenue[] = [
       { roomName: "Cellar Bar", maxCapacity: 40, style: "reception", capacityTrust: "verified" },
       { roomName: "Main Bar Buyout", maxCapacity: 50, style: "reception", capacityTrust: "verified" },
     ],
-    photos: [
-      photo("doscaminos-1", "Dos Caminos private dining room", true),
-      photo("doscaminos-2", "Dos Caminos bar area"),
-      photo("doscaminos-3", "Dos Caminos Mexican dishes"),
-    ],
+    photos: [realPhoto("DosCaminos.jpg", "Dos Caminos, Times Square")],
   },
   {
     name: "AperiBar (LUMA Hotel Times Square)",
@@ -138,10 +141,7 @@ export const seedVenues: SeedVenue[] = [
         notes: "Aggregate figure from venue site; not broken out by named room.",
       },
     ],
-    photos: [
-      photo("aperibar-1", "AperiBar cocktail bar reception setup", true),
-      photo("aperibar-2", "AperiBar Italian small plates"),
-    ],
+    photos: [realPhoto("AperiBar.jpg", "AperiBar at LUMA Hotel Times Square")],
   },
   {
     name: "Renaissance New York Times Square Hotel — Vivid",
@@ -166,7 +166,7 @@ export const seedVenues: SeedVenue[] = [
         notes: "1,104 sq ft; figure from third-party events listing rather than venue's own page.",
       },
     ],
-    photos: [photo("renaissance-1", "Hotel private event room overlooking Times Square", true)],
+    photos: [realPhoto("RenaissanceNYTS.jpg", "Renaissance New York Times Square Hotel")],
   },
 
   // ----------------------------------------------------------------- SF

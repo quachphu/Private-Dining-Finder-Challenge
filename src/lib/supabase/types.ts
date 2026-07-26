@@ -2,7 +2,19 @@
 // If you prefer generated types, run:
 //   npx supabase gen types typescript --project-id <id> > src/lib/supabase/types.ts
 
-export type TrustLevel = "verified" | "likely" | "unverified";
+export type TrustLevel = "confirmed_by_planner" | "verified" | "likely" | "ai_extracted" | "unverified";
+
+export type VenueConfirmationRow = {
+  id: string;
+  venue_id: string;
+  room_id: string | null;
+  company_id: string;
+  confirmed_by: string;
+  confirmed_max_capacity: number | null;
+  confirmed_min_spend_usd: number | null;
+  note: string | null;
+  created_at: string;
+};
 export type CommuteMode = "walk" | "drive";
 export type RoomStyle = "seated" | "reception" | "either";
 export type VenueSource = "curated_seed" | "auto_discovered";
@@ -61,7 +73,9 @@ export type VenueRow = {
   website: string | null;
   description: string | null;
   dietary_notes: string | null;
+  dietary_trust: TrustLevel;
   menu_url: string | null;
+  menu_trust: TrustLevel;
   source_note: string | null;
   last_checked_at: string;
   created_at: string;
@@ -197,6 +211,33 @@ export type Database = {
             columns: ["venue_id"];
             isOneToOne: false;
             referencedRelation: "venues";
+            referencedColumns: ["id"];
+          },
+        ]
+      >;
+      venue_confirmations: TableDef<
+        VenueConfirmationRow,
+        OptionalNullable<Omit<VenueConfirmationRow, "id" | "created_at">> & { id?: string },
+        [
+          {
+            foreignKeyName: "venue_confirmations_venue_id_fkey";
+            columns: ["venue_id"];
+            isOneToOne: false;
+            referencedRelation: "venues";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "venue_confirmations_room_id_fkey";
+            columns: ["room_id"];
+            isOneToOne: false;
+            referencedRelation: "venue_rooms";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "venue_confirmations_company_id_fkey";
+            columns: ["company_id"];
+            isOneToOne: false;
+            referencedRelation: "companies";
             referencedColumns: ["id"];
           },
         ]

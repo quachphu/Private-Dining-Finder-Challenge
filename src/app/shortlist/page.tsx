@@ -1,14 +1,16 @@
 import Link from "next/link";
 import Image from "next/image";
 import { redirect } from "next/navigation";
-import { MessageSquare } from "lucide-react";
+import { Columns3, MessageSquare, Share2 } from "lucide-react";
 import { getCurrentCompany } from "@/lib/workspace";
 import { createServiceClient } from "@/lib/supabase/server";
 import { addToShortlistAction, removeFromShortlistAction } from "@/app/actions";
 import { TrustBadge } from "@/components/trust-badge";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { priceSignal } from "@/lib/price-signal";
+import { cn } from "@/lib/utils";
 import type { ShortlistItemRow, VenuePhotoRow, VenueRoomRow, VenueRow } from "@/lib/supabase/types";
 
 export default async function ShortlistPage() {
@@ -28,12 +30,26 @@ export default async function ShortlistPage() {
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-8">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">Shortlist</h1>
-        <p className="text-sm text-muted-foreground">
-          Shared with everyone at {company.name} who has the workspace code — leave a note on any venue so the team
-          can weigh in.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Shortlist</h1>
+          <p className="text-sm text-muted-foreground">
+            Shared with everyone at {company.name} who has the workspace code — leave a note on any venue so the team
+            can weigh in.
+          </p>
+        </div>
+        {items.length >= 2 && (
+          <div className="flex gap-2">
+            <Link href="/compare" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
+              <Columns3 className="size-4" />
+              Compare
+            </Link>
+            <Link href={`/summary/${company.code}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
+              <Share2 className="size-4" />
+              Shareable summary
+            </Link>
+          </div>
+        )}
       </div>
 
       {items.length === 0 ? (
@@ -45,6 +61,7 @@ export default async function ShortlistPage() {
           {items.map((item) => {
             const bestRoom = [...item.venue.rooms].sort((a, b) => a.max_capacity - b.max_capacity)[0];
             const primaryPhoto = item.venue.photos.find((p) => p.is_primary) ?? item.venue.photos[0];
+            const price = priceSignal(item.venue);
             return (
               <div key={item.id} className="flex flex-col gap-3 rounded-lg border bg-card p-3">
                 <div className="flex items-center gap-4">
@@ -58,9 +75,17 @@ export default async function ShortlistPage() {
                       {item.venue.name}
                     </Link>
                     <p className="text-xs text-muted-foreground">{item.venue.formatted_address}</p>
-                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                      {bestRoom && <Badge variant="secondary">Up to {bestRoom.max_capacity}</Badge>}
-                      {bestRoom && <TrustBadge level={bestRoom.capacity_trust} />}
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                      {bestRoom && (
+                        <span className="inline-flex items-center gap-1">
+                          <Badge variant="secondary">Up to {bestRoom.max_capacity}</Badge>
+                          <TrustBadge level={bestRoom.capacity_trust} subject="Capacity" />
+                        </span>
+                      )}
+                      <span className="inline-flex items-center gap-1">
+                        <Badge variant="secondary">{price.label}</Badge>
+                        <TrustBadge level={price.trust} subject="Price" />
+                      </span>
                       {item.added_by && <span className="text-xs text-muted-foreground">added by {item.added_by}</span>}
                     </div>
                   </div>

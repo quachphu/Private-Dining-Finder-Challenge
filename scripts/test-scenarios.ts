@@ -8,6 +8,7 @@ config({ path: [".env.local", ".env"] });
 
 import { createClient } from "@supabase/supabase-js";
 import { performSearch } from "../src/lib/search";
+import { priceSignal } from "../src/lib/price-signal";
 
 async function main() {
   const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
@@ -64,10 +65,23 @@ async function main() {
 
     console.log(`  Origin resolved to: ${outcome.origin.label} (${outcome.origin.lat.toFixed(4)}, ${outcome.origin.lng.toFixed(4)})`);
     console.log(`  ${outcome.results.length} result(s):`);
-    for (const r of outcome.results) {
+    for (const [i, r] of outcome.results.entries()) {
+      // Printed to mirror the challenge's required-result checklist, so this
+      // output alone shows every required field is populated — including the
+      // price signal's own trust label, separate from capacity's.
+      const price = priceSignal(r.venue);
+      console.log(`   ${i + 1}. ${r.venue.name} — score ${r.score.toFixed(2)}`);
+      console.log(`      address:  ${r.venue.formatted_address}`);
       console.log(
-        `   - ${r.venue.name} | ${Math.round(r.commuteMinutes)} min | room "${r.bestRoom.room_name}" up to ${r.bestRoom.max_capacity} (${r.bestRoom.capacity_trust}) | score=${r.score.toFixed(2)}`
+        `      commute:  ${Math.round(r.commuteMinutes)} min ${scenario.commuteMode} / ${r.commuteMiles.toFixed(2)} mi${r.commuteEstimated ? " (estimated)" : " (routed)"}`
       );
+      console.log(
+        `      room:     "${r.bestRoom.room_name}" up to ${r.bestRoom.max_capacity}${r.bestRoom.min_capacity ? ` (from ${r.bestRoom.min_capacity})` : ""} [capacity trust: ${r.bestRoom.capacity_trust}]`
+      );
+      console.log(`      price:    ${price.label} [price trust: ${price.trust}]`);
+      console.log(`      contact:  ${[r.venue.phone, r.venue.email, r.venue.website].filter(Boolean).join(" | ") || "none found"}`);
+      console.log(`      menu:     ${r.venue.menu_url ?? "none found"}`);
+      console.log(`      dietary:  ${r.venue.dietary_notes ?? "none found"}`);
     }
   }
 

@@ -1,0 +1,12 @@
+-- Adds a distinct trust tier for figures an LLM read out of a venue's own
+-- page text, rather than folding them into 'likely' or 'unverified'.
+--
+-- Why it needs its own tier: an AI-extracted capacity is meaningfully more
+-- informative than "we found nothing" but meaningfully less reliable than a
+-- number matched verbatim on the venue's private-dining page. Merging it into
+-- either neighbour would misrepresent it in one direction or the other, so the
+-- planner is told exactly how the number was obtained.
+--
+-- Positioned before 'unverified' so the enum's own ordering still reads
+-- strongest-to-weakest: verified > likely > ai_extracted > unverified.
+alter type trust_level add value if not exists 'ai_extracted' before 'unverified';
