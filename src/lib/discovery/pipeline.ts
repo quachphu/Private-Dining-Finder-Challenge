@@ -3,7 +3,8 @@ import { discoverNearbyVenues } from "@/lib/discovery/places";
 import { extractPrivateDiningWithLlm, isLlmExtractionConfigured } from "@/lib/discovery/llm-extract";
 import { scrapeVenueForPrivateDining } from "@/lib/discovery/scraper";
 import { buildVenueDraft, type VenueDraft } from "@/lib/discovery/trust";
-import type { LatLng } from "@/lib/geo/commute";
+import { haversineMeters, type LatLng } from "@/lib/geo/commute";
+import { boundingBox } from "@/lib/geo/bounding-box";
 
 /**
  * A dense downtown core (Times Square, the Financial District) returns far
@@ -65,8 +66,67 @@ function citySlugForOrigin(): string {
   return "auto";
 }
 
+function normalizeVenueName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[’'".,()]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// A curated seed venue and Google's own index have no shared identifier, so
+// Google discovering a restaurant that's already in the curated set (a real,
+// common case — Kokkari and Wayfare Tavern both surfaced this way) looks
+// identical to genuinely finding a new venue. Left unguarded, that produces
+// two cards for the same physical restaurant in results, which is worse than
+// missing a photo. Same normalized name within a tight radius is treated as
+// the same venue; the radius is small enough that it won't falsely merge two
+// unrelated places that happen to share a common name on the same block.
+const DEDUP_RADIUS_METERS = 75;
+
+async function findExistingVenueMatch(draft: VenueDraft): Promise<{ id: string; hasPhoto: boolean } | null> {
+  const supabase = createServiceClient();
+  const box = boundingBox({ lat: draft.lat, lng: draft.lng }, DEDUP_RADIUS_METERS);
+
+  const { data } = await supabase
+    .from("venues")
+    .select("id, name, lat, lng, place_source_id, photos:venue_photos(id)")
+    .gte("lat", box.minLat)
+    .lte("lat", box.maxLat)
+    .gte("lng", box.minLng)
+    .lte("lng", box.maxLng);
+
+  const targetName = normalizeVenueName(draft.name);
+  for (const row of data ?? []) {
+    // A re-scrape of a venue this exact call already discovered before isn't
+    // a duplicate, it's an update — let the normal upsert-by-place_source_id
+    // path below handle it.
+    if (row.place_source_id === draft.placeSourceId) continue;
+    if (normalizeVenueName(row.name) !== targetName) continue;
+    if (haversineMeters({ lat: draft.lat, lng: draft.lng }, { lat: row.lat, lng: row.lng }) > DEDUP_RADIUS_METERS) continue;
+    return { id: row.id, hasPhoto: row.photos.length > 0 };
+  }
+  return null;
+}
+
 async function upsertVenueDraft(draft: VenueDraft) {
   const supabase = createServiceClient();
+
+  const existingMatch = await findExistingVenueMatch(draft);
+  if (existingMatch) {
+    // Don't create a second card for a venue already in the catalog — but a
+    // free real photo for one that's missing one is still worth keeping.
+    if (!existingMatch.hasPhoto && draft.imageUrl) {
+      await supabase.from("venue_photos").insert({
+        venue_id: existingMatch.id,
+        url: draft.imageUrl,
+        alt_text: draft.name,
+        sort_order: 0,
+        is_primary: true,
+      });
+    }
+    return;
+  }
 
   const { data: venue, error: venueError } = await supabase
     .from("venues")

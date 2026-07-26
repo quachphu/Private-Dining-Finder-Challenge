@@ -10,7 +10,7 @@ export type CommuteResult = {
 
 const EARTH_RADIUS_M = 6_371_000;
 
-function haversineMeters(a: LatLng, b: LatLng): number {
+export function haversineMeters(a: LatLng, b: LatLng): number {
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const dLat = toRad(b.lat - a.lat);
   const dLng = toRad(b.lng - a.lng);

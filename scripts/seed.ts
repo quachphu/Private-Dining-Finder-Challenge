@@ -88,15 +88,20 @@ async function main() {
       }))
     );
 
-    await supabase.from("venue_photos").insert(
-      seed.photos.map((p, i) => ({
-        venue_id: venueId,
-        url: p.url,
-        alt_text: p.alt,
-        sort_order: i,
-        is_primary: p.isPrimary ?? i === 0,
-      }))
-    );
+    // Several seed venues now intentionally carry no photo (see seed-venues.ts)
+    // rather than a stock placeholder, and an empty insert() is a needless
+    // round-trip PostgREST doesn't need to see.
+    if (seed.photos.length > 0) {
+      await supabase.from("venue_photos").insert(
+        seed.photos.map((p, i) => ({
+          venue_id: venueId,
+          url: p.url,
+          alt_text: p.alt,
+          sort_order: i,
+          is_primary: p.isPrimary ?? i === 0,
+        }))
+      );
+    }
   }
 
   console.log(`\nSeeded ${seedVenues.length} venues.`);

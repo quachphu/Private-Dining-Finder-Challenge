@@ -44,20 +44,6 @@ export type SeedVenue = {
   photos: SeedPhoto[];
 };
 
-// Deterministic placeholder photography (picsum.photos, seeded by slug) —
-// stands in for real venue photography, which in production would come
-// from the Google Places Photos API or licensed venue-supplied images.
-//
-// These are detected at render time by src/lib/photos.ts and visibly labeled
-// "Placeholder image" in the UI. A stock photo captioned as a specific venue's
-// private room is a factual claim about the room a planner is evaluating, so it
-// gets called out rather than passed off as the real thing.
-const photo = (seed: string, alt: string, isPrimary = false): SeedPhoto => ({
-  url: `https://picsum.photos/seed/${seed}/1200/800`,
-  alt,
-  isPrimary,
-});
-
 // Genuine photographs of the venue itself, collected during the manual research
 // pass and committed to /public. Where one of these exists it is the venue's
 // *only* photo: padding it out with picsum filler would mean a "photo tour"
@@ -190,11 +176,9 @@ export const seedVenues: SeedVenue[] = [
       { roomName: "Barolo Room", maxCapacity: 25, minCapacity: 10, style: "either", capacityTrust: "verified", notes: "18 seated / 25 standing." },
       { roomName: "Barbaresco Room", maxCapacity: 70, minCapacity: 20, style: "either", capacityTrust: "verified", notes: "40 seated / 70 standing." },
     ],
-    photos: [
-      photo("perbacco-1", "Perbacco Barbaresco private dining room", true),
-      photo("perbacco-2", "Perbacco Italian plates"),
-      photo("perbacco-3", "Perbacco dining room interior"),
-    ],
+    // No real photo sourced yet — an honest "no photo found" beats a stock
+    // image of an unrelated place. See src/lib/photos.ts.
+    photos: [],
   },
   {
     name: "MKT Restaurant & Bar — Four Seasons San Francisco",
@@ -215,7 +199,7 @@ export const seedVenues: SeedVenue[] = [
       { roomName: "Windows", maxCapacity: 20, style: "seated", capacityTrust: "verified" },
       { roomName: "Windows + adjoining space (combined)", maxCapacity: 40, style: "either", capacityTrust: "likely" },
     ],
-    photos: [photo("mkt-1", "Four Seasons MKT private dining room", true), photo("mkt-2", "MKT restaurant interior")],
+    photos: [],
   },
   {
     name: "Wayfare Tavern",
@@ -241,7 +225,7 @@ export const seedVenues: SeedVenue[] = [
         notes: "Aggregate figure; venue has 4 named rooms but per-room capacities aren't published.",
       },
     ],
-    photos: [photo("wayfare-1", "Wayfare Tavern private dining room", true)],
+    photos: [],
   },
   {
     name: "Kokkari Estiatorio",
@@ -264,7 +248,7 @@ export const seedVenues: SeedVenue[] = [
       { roomName: "Oenos Room", maxCapacity: 30, style: "either", capacityTrust: "verified" },
       { roomName: "Chef's Table", maxCapacity: 20, style: "seated", capacityTrust: "verified" },
     ],
-    photos: [photo("kokkari-1", "Kokkari Oenos private dining room", true), photo("kokkari-2", "Kokkari Greek cuisine")],
+    photos: [],
   },
   {
     name: "The Vault Steakhouse & Garden",
@@ -285,7 +269,7 @@ export const seedVenues: SeedVenue[] = [
     rooms: [
       { roomName: "Private Dining Room", maxCapacity: 20, style: "seated", capacityTrust: "verified", notes: "Up to 20 at four tables, or 14 at one table." },
     ],
-    photos: [photo("vault-1", "The Vault private dining room", true)],
+    photos: [],
   },
 
   // ------------------------------------------------------------- Waikiki
@@ -308,11 +292,7 @@ export const seedVenues: SeedVenue[] = [
       { roomName: "Tapa Ballroom", minCapacity: 150, maxCapacity: 1500, style: "either", capacityTrust: "verified", notes: "150–1,000 seated / 249–1,500 standing." },
       { roomName: "Village Green (outdoor)", minCapacity: 100, maxCapacity: 300, style: "reception", capacityTrust: "verified", notes: "200 banquet-style / 300 reception, tropical gardens setting." },
     ],
-    photos: [
-      photo("hilton-hv-1", "Hilton Hawaiian Village outdoor Village Green event setup", true),
-      photo("hilton-hv-2", "Hilton Hawaiian Village ballroom"),
-      photo("hilton-hv-3", "Hilton Hawaiian Village grounds"),
-    ],
+    photos: [],
   },
   {
     name: "Sheraton Waikiki — Hawaii Ballroom & Lanai Room",
@@ -332,7 +312,7 @@ export const seedVenues: SeedVenue[] = [
       { roomName: "Hawaii Ballroom (divided section)", maxCapacity: 500, style: "either", capacityTrust: "likely", notes: "Full ballroom divides into 4 sections, each up to ~500 guests." },
       { roomName: "Lanai Room", maxCapacity: 480, style: "either", capacityTrust: "likely" },
     ],
-    photos: [photo("sheraton-waikiki-1", "Sheraton Waikiki Hawaii Ballroom event setup", true)],
+    photos: [],
   },
   {
     name: "Tropics Bar & Grill (Hilton Hawaiian Village)",
@@ -352,7 +332,7 @@ export const seedVenues: SeedVenue[] = [
     rooms: [
       { roomName: "Full restaurant buyout (estimated)", maxCapacity: 180, style: "reception", capacityTrust: "unverified" },
     ],
-    photos: [photo("tropics-1", "Tropics Bar & Grill beachfront happy hour", true), photo("tropics-2", "Tropics Bar & Grill outdoor seating")],
+    photos: [],
   },
   {
     name: "Chart House Waikiki",
@@ -372,7 +352,7 @@ export const seedVenues: SeedVenue[] = [
     rooms: [
       { roomName: "Group buyout (estimated, unconfirmed)", maxCapacity: 100, style: "reception", capacityTrust: "unverified" },
     ],
-    photos: [photo("charthouse-1", "Chart House Waikiki oceanfront dining", true)],
+    photos: [],
   },
   {
     name: "The Laylow, Autograph Collection",
@@ -391,6 +371,6 @@ export const seedVenues: SeedVenue[] = [
     rooms: [
       { roomName: "Event Space", maxCapacity: 200, style: "reception", capacityTrust: "likely", notes: "1,500+ sq ft, unnamed single room." },
     ],
-    photos: [photo("laylow-1", "The Laylow Waikiki event space", true)],
+    photos: [],
   },
 ];

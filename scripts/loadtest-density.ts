@@ -31,6 +31,7 @@ const radiusFor = (minutes: number, mode: keyof typeof SPEED_MPS) => SPEED_MPS[m
 const AREAS: Array<{ label: string; origin: LatLng; minutes: number; mode: keyof typeof SPEED_MPS }> = [
   { label: "Times Square, NYC (20 min drive)", origin: { lat: 40.757, lng: -73.9855 }, minutes: 20, mode: "drive" },
   { label: "Salesforce Tower, SF (15 min walk)", origin: { lat: 37.7898, lng: -122.3969 }, minutes: 15, mode: "walk" },
+  { label: "Hilton Hawaiian Village, Waikiki (15 min walk)", origin: { lat: 21.2832, lng: -157.8357 }, minutes: 15, mode: "walk" },
 ];
 
 async function report(label: string, origin: LatLng, radiusMeters: number) {
@@ -39,7 +40,7 @@ async function report(label: string, origin: LatLng, radiusMeters: number) {
 
   const { data: venues } = await supabase
     .from("venues")
-    .select("id, name, source, rooms:venue_rooms(max_capacity, capacity_trust)")
+    .select("id, name, source, rooms:venue_rooms(max_capacity, capacity_trust), photos:venue_photos(id)")
     .gte("lat", box.minLat)
     .lte("lat", box.maxLat)
     .gte("lng", box.minLng)
@@ -52,12 +53,14 @@ async function report(label: string, origin: LatLng, radiusMeters: number) {
   );
   const fits50 = rows.filter((v) => v.rooms.some((r) => r.max_capacity >= 50));
   const fits200 = rows.filter((v) => v.rooms.some((r) => r.max_capacity >= 200));
+  const withPhoto = rows.filter((v) => v.photos.length > 0);
 
   console.log(`  cached in area:        ${rows.length}`);
   console.log(`  with any room listed: ${withRooms.length}`);
   console.log(`  capacity confirmed:   ${withConfirmedCapacity.length}`);
   console.log(`  could host 50:        ${fits50.length}`);
   console.log(`  could host 200:       ${fits200.length}`);
+  console.log(`  with a photo:         ${withPhoto.length}`);
   console.log(`  curated vs discovered: ${rows.filter((v) => v.source === "curated_seed").length} / ${rows.filter((v) => v.source === "auto_discovered").length}`);
   void label;
 }

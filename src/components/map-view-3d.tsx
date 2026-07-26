@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 // maplibre-gl v6 dropped the default export in favour of named ones.
 import { LngLatBounds, Map as MapLibreMap, Marker, NavigationControl, Popup } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -45,6 +45,23 @@ function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }
 
+/**
+ * MapLibre doesn't reliably throw when WebGL2 is missing (disabled hardware
+ * acceleration, an old browser, a locked-down corporate device, a headless
+ * preview pane): it logs a `GPUInitializationError` and limps on with an
+ * internally half-initialized map, which then throws a confusing
+ * `Cannot read properties of undefined` the moment a marker is added.
+ * Checking up front turns that crash into a plain, honest message.
+ */
+function supportsWebGL2(): boolean {
+  try {
+    const canvas = document.createElement("canvas");
+    return Boolean(canvas.getContext("webgl2"));
+  } catch {
+    return false;
+  }
+}
+
 function pinElement(content: string, color: string, size: number): HTMLElement {
   const el = document.createElement("div");
   el.style.cssText = `width:${size}px;height:${size}px;border-radius:50% 50% 50% 0;background:${color};transform:rotate(-45deg);box-shadow:0 2px 8px rgba(0,0,0,.35);border:2px solid white;display:flex;align-items:center;justify-content:center;cursor:pointer`;
@@ -61,20 +78,56 @@ function pinElement(content: string, color: string, size: number): HTMLElement {
 export default function MapView3D({ origin, venues, className }: MapView3DProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
+  // Computed once, in the initializer rather than as a setState call inside
+  // the effect below: this is genuinely part of the initial render (a static
+  // capability of the browser, not a subscription to anything), so deriving
+  // it during render is the correct pattern, not just a lint workaround.
+  const [unsupported, setUnsupported] = useState(() => !supportsWebGL2());
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (unsupported || !containerRef.current) return;
 
-    const map = new MapLibreMap({
-      container: containerRef.current,
-      style: STYLE_URL,
-      center: [origin.lng, origin.lat],
-      zoom: 15,
-      pitch: 55,
-      bearing: -20,
-      attributionControl: { compact: true },
-    });
+    let map: MapLibreMap;
+    try {
+      map = new MapLibreMap({
+        container: containerRef.current,
+        style: STYLE_URL,
+        center: [origin.lng, origin.lat],
+        zoom: 15,
+        pitch: 55,
+        bearing: -20,
+        attributionControl: { compact: true },
+      });
+    } catch (err) {
+      // Belt-and-suspenders: some environments fail the feature check above
+      // but still throw synchronously here rather than during marker setup.
+      // This can only be discovered by attempting construction, so it's
+      // necessarily reactive rather than derivable during render.
+      console.error("MapLibre failed to initialize:", err);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reacting to a real synchronous constructor failure, not derivable up front
+      setUnsupported(true);
+      return;
+    }
     mapRef.current = map;
+
+    // Belt-and-suspenders, part two: `canvas.getContext('webgl2')` can return
+    // a context object even when the browser's GPU process itself is broken
+    // (seen in practice on a Safari session with hardware acceleration
+    // unavailable) — MapLibre then logs a `GPUInitializationError` and quietly
+    // leaves the canvas blank rather than throwing where the try/catch above
+    // could see it. Markers are plain DOM elements positioned by CSS, so they
+    // still render on top of that blank canvas, which looks like a broken map
+    // rather than an honest fallback. Watching the map's own error event is
+    // the only way to catch this after the fact.
+    map.on("error", (e) => {
+      const message = e.error?.message ?? "";
+      if (/webgl|gpu/i.test(message)) {
+        console.error("MapLibre reported a GPU/WebGL error after init:", message);
+        map.remove();
+        mapRef.current = null;
+        setUnsupported(true);
+      }
+    });
 
     map.addControl(new NavigationControl({ visualizePitch: true }), "top-right");
 
@@ -116,10 +169,26 @@ export default function MapView3D({ origin, venues, className }: MapView3DProps)
     });
 
     return () => {
-      map.remove();
+      // The error handler above may have already torn the map down (setting
+      // mapRef.current to null) before this cleanup ever runs.
+      if (mapRef.current) map.remove();
       mapRef.current = null;
     };
-  }, [origin, venues]);
+  }, [origin, venues, unsupported]);
+
+  if (unsupported) {
+    return (
+      <div className={className}>
+        <div className="flex h-full w-full flex-col items-center justify-center gap-1 rounded-xl border bg-muted/40 p-6 text-center">
+          <p className="text-sm font-medium">3D view isn&apos;t available here</p>
+          <p className="max-w-xs text-xs text-muted-foreground">
+            This browser doesn&apos;t support WebGL2, which the tilted map needs. Switch back to 2D — every result is still
+            there.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return <div ref={containerRef} className={className} />;
 }
