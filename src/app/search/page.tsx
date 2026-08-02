@@ -11,6 +11,7 @@ import { defaultsForPersona, parsePersona, resolveFormDefaults } from "@/lib/per
 import type { CommuteMode } from "@/lib/geo/commute";
 import { SearchPipeline } from "@/components/search-pipeline";
 import { SearchResults } from "@/components/search-results";
+import { RememberSearch } from "@/components/remember-search";
 import type { RoomStyle } from "@/lib/supabase/types";
 
 const SEARCH_FORM_ID = "pdf-search-form";
@@ -123,6 +124,9 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
 
       {stages && (
         <>
+          {/* Only mounted when a search really ran, so "back to results"
+              from the shortlist never points at an empty form. */}
+          <RememberSearch />
           <SearchPipeline stages={stages} />
           <Suspense fallback={null}>
             <SearchResults

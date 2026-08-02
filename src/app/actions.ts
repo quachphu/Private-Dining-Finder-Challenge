@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createServiceClient } from "@/lib/supabase/server";
 import { geocodeAddress } from "@/lib/geo/geocode";
 import { isEmptyParse, isNaturalLanguageSearchConfigured, parseNaturalLanguageQuery } from "@/lib/nl-query";
+import { isDietarySummaryConfigured, summarizeDietaryNeeds } from "@/lib/dietary-summary";
 import {
   createCompanyWorkspace,
   getCurrentCompany,
@@ -123,7 +124,9 @@ export async function addToShortlistAction(formData: FormData) {
       .update({ note, added_by: addedBy, search_id: searchId ?? existing.search_id })
       .eq("id", existing.id);
   } else {
-    await supabase.from("shortlist_items").insert({ company_id: company.id, venue_id: venueId, search_id: searchId, note, added_by: addedBy });
+    await supabase
+      .from("shortlist_items")
+      .insert({ company_id: company.id, venue_id: venueId, search_id: searchId, note, added_by: addedBy, is_selected: false });
   }
 
   revalidatePath("/shortlist");
@@ -131,145 +134,170 @@ export async function addToShortlistAction(formData: FormData) {
 }
 
 /**
- * Posts a message into a shortlisted venue's discussion thread.
+ * Records which shortlisted venue the host is actually going with — the step
+ * that turns a comparison into an event, and the point from which attendees
+ * (rather than colleagues) become the audience.
  *
- * No revalidatePath here on purpose: this is meant to be read live, over the
- * shortlist_messages Realtime channel every viewer is already subscribed to
- * (see src/components/shortlist-chat.tsx), not by re-rendering the page.
- * Revalidating would just cause a redundant server round-trip for the sender
- * on top of the Realtime push everyone (including them) already gets.
+ * Two statements rather than one because a workspace can only have one chosen
+ * venue: the partial unique index from migration 0010 rejects a second, so the
+ * previous choice is stood down first. Clearing first also means the worst
+ * outcome of a failure between the two is "nothing selected", which the
+ * shortlist shows plainly, rather than two venues both claiming to be chosen.
  */
-export async function sendShortlistMessageAction(formData: FormData) {
+export async function selectVenueAction(formData: FormData) {
   const company = await getCurrentCompany();
   if (!company) throw new Error("No active workspace.");
 
-  const shortlistItemId = String(formData.get("shortlistItemId") ?? "");
-  const message = String(formData.get("message") ?? "").trim();
-  if (!shortlistItemId) throw new Error("Missing shortlist item.");
-  if (!message) throw new Error("Message can't be empty.");
-
-  const author = (await getDisplayName()) ?? "Someone";
+  const venueId = String(formData.get("venueId") ?? "");
+  if (!venueId) throw new Error("Venue is required.");
 
   const supabase = createServiceClient();
+  await supabase.from("shortlist_items").update({ is_selected: false }).eq("company_id", company.id).eq("is_selected", true);
+
+  const { error } = await supabase
+    .from("shortlist_items")
+    .update({ is_selected: true })
+    .eq("company_id", company.id)
+    .eq("venue_id", venueId);
+  if (error) throw new Error("Could not select that venue.");
+
+  revalidatePath("/shortlist");
+  revalidatePath(`/venue/${venueId}`);
+  revalidatePath(`/event/${company.code}`);
+}
+
+/** Reopens the decision without losing the shortlist or the event thread. */
+export async function clearSelectedVenueAction() {
+  const company = await getCurrentCompany();
+  if (!company) throw new Error("No active workspace.");
+
+  const supabase = createServiceClient();
+  await supabase.from("shortlist_items").update({ is_selected: false }).eq("company_id", company.id).eq("is_selected", true);
+
+  revalidatePath("/shortlist");
+  revalidatePath(`/event/${company.code}`);
+}
+
+// Caps on what an un-authenticated attendee can write. The event page is
+// reachable by anyone holding the link, so these bound the damage a bored
+// guest can do to the host's roster without making a legitimate "I'm allergic
+// to shellfish and peanuts" reply hit a limit.
+const MAX_ATTENDEE_NAME_CHARS = 60;
+const MAX_EVENT_MESSAGE_CHARS = 600;
+
+/**
+ * Posts an attendee's reply into the chosen venue's event thread.
+ *
+ * Addressed by workspace code and a typed name rather than by cookie, unlike
+ * every other write in this file. The people answering "does anyone have an
+ * allergy?" are dinner guests, not planners: requiring two hundred of them to
+ * join a workspace first would lose most of the answers, and the answers are
+ * the entire point. Possession of the event link is the credential, the same
+ * model /summary/[code] already uses.
+ *
+ * No revalidatePath: everyone on the event page is already subscribed to
+ * this thread over Realtime (see src/components/event-chat.tsx), so
+ * re-rendering the page here would just be a redundant round-trip for the
+ * sender on top of the push they already get.
+ */
+export async function sendEventMessageAction(formData: FormData) {
+  const code = String(formData.get("code") ?? "")
+    .trim()
+    .toUpperCase();
+  const name = String(formData.get("name") ?? "")
+    .trim()
+    .slice(0, MAX_ATTENDEE_NAME_CHARS);
+  const message = String(formData.get("message") ?? "")
+    .trim()
+    .slice(0, MAX_EVENT_MESSAGE_CHARS);
+
+  if (!code) throw new Error("Missing event code.");
+  if (!name) throw new Error("Add your name first so the host knows whose restriction this is.");
+  if (!message) throw new Error("Message can't be empty.");
+
+  const supabase = createServiceClient();
+  const { data: company } = await supabase.from("companies").select("id").eq("code", code).maybeSingle();
+  if (!company) throw new Error("That event link is no longer valid.");
+
+  const { data: item } = await supabase
+    .from("shortlist_items")
+    .select("id")
+    .eq("company_id", company.id)
+    .eq("is_selected", true)
+    .maybeSingle();
+  if (!item) throw new Error("The host hasn't picked the venue yet — check back shortly.");
+
   const { error } = await supabase.from("shortlist_messages").insert({
-    shortlist_item_id: shortlistItemId,
+    shortlist_item_id: item.id,
     company_id: company.id,
-    author,
+    author: name,
     message,
     is_highlight_reel: false,
+    channel: "event",
   });
   if (error) throw new Error("Could not send that message.");
 }
 
-const SHORTLIST_MEDIA_BUCKET = "shortlist-media";
-// Keeps individual uploads (and the highlight reel built from them) light —
-// enforced here since the client-side check in shortlist-chat.tsx is only a
-// courtesy, not a security boundary (see Server Actions guide: "Validate
-// inputs. Treat FormData... as untrusted").
-const MAX_ATTACHMENT_BYTES: Record<"image" | "video", number> = {
-  image: 8 * 1024 * 1024,
-  video: 20 * 1024 * 1024,
-};
-
-const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "avif", "heic", "heif"]);
-const VIDEO_EXTENSIONS = new Set(["mp4", "webm", "mov", "m4v", "avi", "mkv"]);
-
-// A browser-picked file's MIME type is reliable, but a File built in JS from
-// a MediaRecorder Blob (see ShortlistHighlightReel) isn't guaranteed to
-// survive multipart transport with an exotic type intact — some encodings
-// fall back to "text/plain" for a Content-Type they can't parse. Extension
-// is the fallback signal in that case, not the primary one.
-function attachmentTypeFromFile(file: File): "image" | "video" | null {
-  if (file.type.startsWith("image/")) return "image";
-  if (file.type.startsWith("video/")) return "video";
-
-  const extension = file.name.includes(".") ? file.name.split(".").pop()!.toLowerCase() : "";
-  if (IMAGE_EXTENSIONS.has(extension)) return "image";
-  if (VIDEO_EXTENSIONS.has(extension)) return "video";
-  return null;
-}
-
 /**
- * Posts a photo or video into a shortlisted venue's discussion thread —
- * the same append-only thread sendShortlistMessageAction writes to, just
- * with a Storage object attached instead of (or alongside) typed text.
+ * Reads the event thread into a dietary roster the host can hand to the venue.
  *
- * Also used to post a generated highlight reel back to the thread (see
- * ShortlistHighlightReel): the reel is just another video File at that
- * point, uploaded through the same path.
+ * Kept an explicit action rather than something that runs on every page view:
+ * it costs an LLM call, and more importantly the host needs a snapshot they
+ * can read, correct and forward — not a list that silently rewords itself
+ * while they're looking at it. Each run is stored, so the page can say how
+ * many replies it was based on and whether any have landed since.
+ *
+ * Fails loudly and changes nothing when the model is unavailable. The raw
+ * replies stay on the page in that case, so an unreachable API degrades the
+ * host to reading the thread themselves rather than to a half-built roster
+ * they might mistake for complete — which, for allergies, is the failure that
+ * actually matters.
  */
-export async function sendShortlistAttachmentAction(formData: FormData): Promise<void> {
-  const company = await getCurrentCompany();
-  if (!company) throw new Error("No active workspace.");
+export async function generateDietarySummaryAction(formData: FormData) {
+  const code = String(formData.get("code") ?? "")
+    .trim()
+    .toUpperCase();
+  if (!code) throw new Error("Missing event code.");
 
-  const shortlistItemId = String(formData.get("shortlistItemId") ?? "");
-  if (!shortlistItemId) throw new Error("Missing shortlist item.");
-
-  const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) throw new Error("No file provided.");
-
-  const attachmentType = attachmentTypeFromFile(file);
-  if (!attachmentType) throw new Error("Only photos and videos can be attached.");
-
-  const maxBytes = MAX_ATTACHMENT_BYTES[attachmentType];
-  if (file.size > maxBytes) {
-    throw new Error(`${attachmentType === "image" ? "Photos" : "Videos"} can't be larger than ${Math.round(maxBytes / (1024 * 1024))}MB.`);
+  if (!isDietarySummaryConfigured()) {
+    throw new Error("Automatic summarizing isn't configured (XAI_API_KEY). Everyone's replies are still listed below.");
   }
 
-  const caption = String(formData.get("message") ?? "").trim();
-  const isHighlightReel = formData.get("isHighlightReel") === "true";
-  if (isHighlightReel && attachmentType !== "video") throw new Error("Highlight reels must be a video.");
-  const author = (await getDisplayName()) ?? "Someone";
-
-  const extension = (file.name.includes(".") ? file.name.split(".").pop()! : attachmentType === "image" ? "jpg" : "webm").toLowerCase();
-  const objectPath = `${company.id}/${shortlistItemId}/${crypto.randomUUID()}.${extension}`;
-
-  // file.type is the browser-reported MIME for a real file pick, but isn't
-  // trustworthy for a synthetic File (see attachmentTypeFromFile) — an
-  // extension-derived content type keeps Storage from serving the object as
-  // (or downstream browsers sniffing it as) something that won't play/render.
-  const EXTENSION_CONTENT_TYPES: Record<string, string> = {
-    jpg: "image/jpeg",
-    jpeg: "image/jpeg",
-    png: "image/png",
-    gif: "image/gif",
-    webp: "image/webp",
-    avif: "image/avif",
-    heic: "image/heic",
-    heif: "image/heif",
-    mp4: "video/mp4",
-    webm: "video/webm",
-    mov: "video/quicktime",
-    m4v: "video/x-m4v",
-    avi: "video/x-msvideo",
-    mkv: "video/x-matroska",
-  };
-  const contentType =
-    file.type.startsWith("image/") || file.type.startsWith("video/")
-      ? file.type
-      : (EXTENSION_CONTENT_TYPES[extension] ?? (attachmentType === "image" ? "image/jpeg" : "video/webm"));
-
   const supabase = createServiceClient();
-  const { error: uploadError } = await supabase.storage.from(SHORTLIST_MEDIA_BUCKET).upload(objectPath, file, {
-    contentType,
-    cacheControl: "31536000",
-  });
-  if (uploadError) throw new Error(`Could not upload that file: ${uploadError.message}`);
+  const { data: company } = await supabase.from("companies").select("id").eq("code", code).maybeSingle();
+  if (!company) throw new Error("That event link is no longer valid.");
 
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from(SHORTLIST_MEDIA_BUCKET).getPublicUrl(objectPath);
+  const { data: item } = await supabase
+    .from("shortlist_items")
+    .select("id")
+    .eq("company_id", company.id)
+    .eq("is_selected", true)
+    .maybeSingle();
+  if (!item) throw new Error("Pick the venue first — there's no event thread to read yet.");
 
-  const { error: insertError } = await supabase.from("shortlist_messages").insert({
-    shortlist_item_id: shortlistItemId,
+  const { data: messages } = await supabase
+    .from("shortlist_messages")
+    .select("author, message")
+    .eq("shortlist_item_id", item.id)
+    .eq("channel", "event")
+    .order("created_at", { ascending: true });
+
+  const usable = (messages ?? []).filter((m) => m.message.trim());
+  if (usable.length === 0) throw new Error("Nobody has replied yet, so there's nothing to summarize.");
+
+  const summary = await summarizeDietaryNeeds(usable);
+  if (!summary) throw new Error("Couldn't read the replies just now — nothing was changed. Try again in a moment.");
+
+  const { error } = await supabase.from("dietary_summaries").insert({
+    shortlist_item_id: item.id,
     company_id: company.id,
-    author,
-    message: caption,
-    attachment_url: publicUrl,
-    attachment_type: attachmentType,
-    is_highlight_reel: isHighlightReel,
+    summary,
+    message_count: usable.length,
+    generated_by: (await getDisplayName()) ?? null,
   });
-  if (insertError) throw new Error("Could not send that attachment.");
+  if (error) throw new Error("Could not save that summary.");
+
+  revalidatePath(`/event/${code}`);
 }
 
 /**

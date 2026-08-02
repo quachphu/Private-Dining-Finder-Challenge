@@ -1,0 +1,49 @@
+/*
+ * Entrance choreography for the landing page's cinematic hero
+ * (src/app/page.tsx + src/components/hero-video-background.tsx).
+ * Kept in its own file since these are one-off keyframes for a single
+ * section, not general-purpose utilities — imported once from globals.css.
+ */
+@theme {
+  --animate-fade-rise: fade-rise 0.8s ease-out both;
+  --animate-fade-rise-delay: fade-rise 0.8s ease-out 0.2s both;
+  --animate-fade-rise-delay-2: fade-rise 0.8s ease-out 0.4s both;
+}
+
+@keyframes fade-rise {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/*
+ * Veil over the hero video. A plain three-stop
+ * background → transparent → background gradient fully clears only at its
+ * exact midpoint, which washed the footage out badly enough that it read as
+ * "the video isn't playing". This holds the top opaque so the nav and
+ * headline stay legible, opens to a light wash across the band the video
+ * actually occupies, then closes back to the page background so the hero
+ * blends into the section beneath it.
+ *
+ * Written with literal rgb()/alpha rather than color-mix() over
+ * var(--background): Lightning CSS emits a no-color-mix fallback that
+ * degrades every mixed stop to the *opaque* base colour, which would hide the
+ * video completely on an older browser — the exact failure being fixed here.
+ * The hero is a light-only section and already hardcodes its palette per the
+ * design, so there's no theme token to lose.
+ */
+.hero-video-veil {
+  background-image: linear-gradient(
+    to bottom,
+    rgb(255 255 255) 0%,
+    rgb(255 255 255) 14%,
+    rgb(255 255 255 / 0.24) 38%,
+    rgb(255 255 255 / 0.24) 66%,
+    rgb(255 255 255) 100%
+  );
+}

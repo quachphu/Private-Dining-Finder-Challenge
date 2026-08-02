@@ -27,8 +27,8 @@ export async function NavBar() {
               {company.name}
               {company.created_by && <span className="font-normal text-muted-foreground"> · organized by {company.created_by}</span>}
             </div>
-            <div className="text-muted-foreground">
-              code: <code className="rounded bg-muted px-1 py-0.5">{company.code}</code>
+            <div className="text-muted-foreground" title="For teammates to rejoin this workspace on another device — not for attendees, who should get an event link instead">
+              team code: <code className="rounded bg-muted px-1 py-0.5">{company.code}</code>
             </div>
           </div>
           <form action={leaveWorkspaceAction}>

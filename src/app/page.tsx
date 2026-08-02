@@ -2,15 +2,38 @@ import { Suspense } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { redirect } from "next/navigation";
+import { Instrument_Serif, Inter } from "next/font/google";
 import { getCurrentCompany } from "@/lib/workspace";
-import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TrustBadge } from "@/components/trust-badge";
 import MapView from "@/components/map-view-loader";
+import { HeroVideoBackground } from "@/components/hero-video-background";
 import { formatGeneratedAt, getLandingPreview, PREVIEW_QUERY } from "@/lib/landing-preview";
 import { isPlaceholderPhoto } from "@/lib/photos";
-import { ArrowRight, MapPinned, ShieldCheck, UtensilsCrossed, Users } from "lucide-react";
+import { ArrowRight, MapPinned, ShieldCheck, Users } from "lucide-react";
+
+// Loaded here rather than in the root layout: these two faces are only used
+// by this page's cinematic hero (Instrument Serif for the display
+// headline/logo, Inter for nav links and body copy over the video), so
+// scoping them to the page keeps every other route's bundle from paying for
+// fonts it never renders. next/font self-hosts both — no request to Google
+// Fonts, no layout shift — which is why this reaches for it instead of the
+// plain @import url(...) a non-Next stack would use for the same fonts.
+const instrumentSerif = Instrument_Serif({
+  variable: "--font-instrument-serif",
+  subsets: ["latin"],
+  weight: "400",
+  style: ["normal", "italic"],
+});
+
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin"],
+});
+
+const HERO_VIDEO_SRC =
+  "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260328_083109_283f3553-e28f-428b-a723-d639c617eb2b.mp4";
 
 function PreviewFrame({ children, caption }: { children: React.ReactNode; caption?: React.ReactNode }) {
   const url = `privatedining.app/search?address=${encodeURIComponent(PREVIEW_QUERY.address)}&headcount=${PREVIEW_QUERY.headcount}&maxCommuteMinutes=${PREVIEW_QUERY.maxCommuteMinutes}&commuteMode=${PREVIEW_QUERY.commuteMode}`;
@@ -170,76 +193,119 @@ export default async function LandingPage() {
   if (company) redirect("/search");
 
   return (
-    <div className="relative overflow-x-hidden bg-background">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10 [background-image:radial-gradient(circle,color-mix(in_oklch,var(--foreground),transparent_92%)_1px,transparent_1px)] [background-size:28px_28px] [mask-image:radial-gradient(ellipse_80%_60%_at_50%_0%,black_40%,transparent_100%)]"
-      />
+    <div className={`${instrumentSerif.variable} ${inter.variable} relative overflow-x-hidden bg-background`}>
+      {/* Fullscreen cinematic hero: video (z-0) + gradient overlay, with the
+          nav and headline (z-10) sitting on top of both. Confined to its own
+          min-h-screen box so the video never bleeds into the live-preview
+          and features sections below, which stay on a plain background. */}
+      <div className="relative min-h-screen w-full overflow-hidden bg-background">
+        <HeroVideoBackground src={HERO_VIDEO_SRC} />
+        <div aria-hidden className="hero-video-veil absolute inset-0" />
 
-      <header className="border-b">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-5 lg:px-10">
-          <div className="group flex items-center gap-2.5 transition-opacity hover:opacity-70">
-            <span className="flex size-7 items-center justify-center rounded-md bg-foreground text-background">
-              <UtensilsCrossed className="size-3.5" />
-            </span>
-            <span className="font-[family-name:var(--font-display)] text-[17px] tracking-tight italic">
-              Private Dining Finder
-            </span>
-          </div>
-          <Link href="/start" className={buttonVariants({ variant: "outline", size: "sm" })}>
+        <header className="relative z-10 mx-auto flex w-full max-w-7xl items-center justify-between px-8 py-6">
+          <Link
+            href="/"
+            className="font-[family-name:var(--font-instrument-serif)] text-2xl tracking-tight text-[#000000] transition-opacity hover:opacity-70 sm:text-3xl"
+          >
+            Private Dining Finder
+          </Link>
+          <nav className="hidden items-center gap-8 font-[family-name:var(--font-inter)] text-sm md:flex">
+            <Link href="/" className="text-[#000000] transition-colors">
+              Home
+            </Link>
+            <a href="#live-preview" className="text-[#6F6F6F] transition-colors hover:text-[#000000]">
+              Live search
+            </a>
+            <a href="#features" className="text-[#6F6F6F] transition-colors hover:text-[#000000]">
+              How it works
+            </a>
+            <Link href="/start?tab=join" className="text-[#6F6F6F] transition-colors hover:text-[#000000]">
+              Have a workspace code?
+            </Link>
+          </nav>
+          <Link
+            href="/start"
+            className="rounded-full bg-[#000000] px-6 py-2.5 font-[family-name:var(--font-inter)] text-sm text-[#FFFFFF] transition-transform duration-200 hover:scale-[1.03]"
+          >
             Get started
           </Link>
-        </div>
-      </header>
+        </header>
 
-      <section className="mx-auto flex w-full max-w-[100rem] flex-col items-center px-6 py-20 text-center sm:py-28 lg:px-10">
-        <Badge
-          variant="outline"
-          className="mb-6 gap-1.5 rounded-full border-white/60 bg-white/40 px-3 py-1 text-xs font-medium shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-white/5"
+        <section
+          className="relative z-10 mx-auto flex w-full max-w-5xl flex-col items-center px-6 pb-40 text-center"
+          style={{ paddingTop: "calc(8rem - 75px)" }}
         >
-          <span className="size-1.5 rounded-full bg-emerald-500" />
-          For corporate event planners
-        </Badge>
-        <h1 className="max-w-4xl font-[family-name:var(--font-display)] text-[clamp(40px,6vw,72px)] leading-[1.05] font-medium tracking-[-0.02em] text-balance">
-          Find the right private dining venue in minutes, not calls.
-        </h1>
-        <p className="mt-6 max-w-xl text-balance text-muted-foreground sm:text-lg">
-          Enter an address, headcount, and commute window. Get a ranked, map-based shortlist of private dining
-          venues — every capacity and price figure labeled by how confident we actually are in it.
-        </p>
-        <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row">
-          <Link href="/start" className={buttonVariants({ size: "lg", className: "gap-1.5 px-6" })}>
-            Get started
-            <ArrowRight className="size-4" />
-          </Link>
-          <Link href="/start?tab=join" className={buttonVariants({ variant: "outline", size: "lg" })}>
-            Already have a workspace code?
-          </Link>
-        </div>
-        <span className="mt-3 text-xs text-muted-foreground">Free to use · No account or card required</span>
+          <Badge
+            variant="outline"
+            className="animate-fade-rise mb-6 gap-1.5 rounded-full border-black/10 bg-white/60 px-3 py-1 text-xs font-medium text-[#000000] shadow-sm backdrop-blur-md"
+          >
+            <span className="size-1.5 rounded-full bg-emerald-500" />
+            For corporate event planners
+          </Badge>
+          <h1
+            className="animate-fade-rise max-w-4xl font-[family-name:var(--font-instrument-serif)] text-5xl font-normal text-[#000000] text-balance sm:text-7xl md:text-8xl"
+            style={{ lineHeight: 0.95, letterSpacing: "-2.46px" }}
+          >
+            Beyond <span className="italic text-[#6F6F6F]">the calls,</span> discover{" "}
+            <span className="italic text-[#6F6F6F]">the perfect room.</span>
+          </h1>
+          <p
+            className="animate-fade-rise-delay mt-8 max-w-2xl font-[family-name:var(--font-inter)] text-base leading-relaxed text-[#6F6F6F] sm:text-lg"
+          >
+            Enter an address, headcount, and commute window. Get a ranked, map-based shortlist of private dining
+            venues — every capacity and price figure labeled by how confident we actually are in it.
+          </p>
+          <div className="animate-fade-rise-delay-2 mt-12 flex flex-col items-center gap-3 sm:flex-row">
+            <Link
+              href="/start"
+              className="inline-flex items-center gap-1.5 rounded-full bg-[#000000] px-14 py-5 font-[family-name:var(--font-inter)] text-base text-[#FFFFFF] transition-transform duration-200 hover:scale-[1.03]"
+            >
+              Get started
+              <ArrowRight className="size-4" />
+            </Link>
+            <Link
+              href="/start?tab=join"
+              className="inline-flex items-center gap-1.5 rounded-full border border-black/15 bg-white/70 px-8 py-5 font-[family-name:var(--font-inter)] text-base text-[#000000] backdrop-blur-md transition-transform duration-200 hover:scale-[1.03]"
+            >
+              Already have a workspace code?
+            </Link>
+          </div>
+          <span className="animate-fade-rise-delay-2 mt-4 font-[family-name:var(--font-inter)] text-xs text-[#6F6F6F]">
+            Free to use · No account or card required
+          </span>
+        </section>
+      </div>
+
+      <div className="relative bg-background">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 -z-10 [background-image:radial-gradient(circle,color-mix(in_oklch,var(--foreground),transparent_92%)_1px,transparent_1px)] [background-size:28px_28px] [mask-image:radial-gradient(ellipse_80%_60%_at_50%_0%,black_40%,transparent_100%)]"
+        />
 
         {/* Streamed separately from the hero: this runs a real search against
             the live pipeline, so it must never delay first paint. */}
-        <Suspense fallback={<PreviewFrame>{<PreviewSkeleton />}</PreviewFrame>}>
-          <LivePreview />
-        </Suspense>
-      </section>
+        <section id="live-preview" className="mx-auto flex w-full max-w-[100rem] flex-col items-center px-6 pb-20 lg:px-10">
+          <Suspense fallback={<PreviewFrame>{<PreviewSkeleton />}</PreviewFrame>}>
+            <LivePreview />
+          </Suspense>
+        </section>
 
-      <section className="border-t bg-card/50" id="features">
-        <div className="mx-auto grid max-w-5xl gap-10 px-6 py-16 sm:grid-cols-3 lg:px-10 lg:py-20">
-          {FEATURES.map((f) => (
-            <div key={f.title} className="flex flex-col items-start gap-3">
-              <span className="flex size-9 items-center justify-center rounded-lg bg-foreground text-background">
-                <f.icon className="size-4" />
-              </span>
-              <div>
-                <div className="font-medium">{f.title}</div>
-                <div className="mt-1 text-sm text-muted-foreground">{f.description}</div>
+        <section className="border-t bg-card/50" id="features">
+          <div className="mx-auto grid max-w-5xl gap-10 px-6 py-16 sm:grid-cols-3 lg:px-10 lg:py-20">
+            {FEATURES.map((f) => (
+              <div key={f.title} className="flex flex-col items-start gap-3">
+                <span className="flex size-9 items-center justify-center rounded-lg bg-foreground text-background">
+                  <f.icon className="size-4" />
+                </span>
+                <div>
+                  <div className="font-medium">{f.title}</div>
+                  <div className="mt-1 text-sm text-muted-foreground">{f.description}</div>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      </section>
+            ))}
+          </div>
+        </section>
+      </div>
     </div>
   );
 }

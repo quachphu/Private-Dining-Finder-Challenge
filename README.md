@@ -1,28 +1,38 @@
 # Private Dining Finder
 
-A research and comparison tool for event planners: enter an address, headcount, and max commute time, and get a ranked shortlist of private dining venues — each with room capacities, commute time, and a trust label (verified / likely / unverified) on every capacity and price figure.
+**Find a private dining room that actually fits your group — backed by evidence, not guesses.**
 
-Built for the Nowadays "Private Dining Finder" take-home challenge.
+Enter an address, a headcount, and a max commute time. Get back a ranked shortlist of private dining venues — each one labeled with *how confident you should be* in its room capacity and price, not just what the capacity and price are.
 
-## How it actually finds venues
+📹 **Demo video:** _add link here_
+📊 **Pitch deck:** _add link here_
+🏗️ **[Architecture](./ARCHITECTURE.md)**
 
-This is the part worth understanding before poking at the code: there's no clean public API for "restaurant with a private room that seats 40." So the app runs a small discovery pipeline instead of querying a single API:
+---
 
-1. **Geocode** the planner's address (OpenStreetMap Nominatim — free, no API key).
-2. **Discover** candidate venues near that point (Google Places if `GOOGLE_PLACES_API_KEY` is set, otherwise the free OpenStreetMap Overpass API).
-3. **Scrape** each candidate's own website for a private-dining/events page and extract room names, capacity numbers, minimum-spend figures, menus, dietary notes, and contact info via pattern matching (`src/lib/discovery/scraper.ts`).
-4. **Render, if the static pass came back empty** — a JS-rendered fallback via Firecrawl (`src/lib/discovery/render.ts`), so a venue isn't labeled unverified purely because its content is client-rendered.
-5. **Read with an LLM, if a private-dining page exists but states no number** — a schema-constrained xAI Grok pass (`src/lib/discovery/llm-extract.ts`) for capacities written in prose.
-6. **Label trust** based on what was actually found, and cross-reference the pattern-matched read against the LLM read where both exist: agreement upgrades confidence, disagreement surfaces both figures rather than silently picking one (`src/lib/discovery/trust.ts`).
-7. **Cache** the result in Supabase (`src/lib/discovery/ensure-coverage.ts`) so a second search near the same area reuses what was already discovered instead of re-scraping every time (30-day TTL).
+## The problem
 
-Steps 4 and 5 are the only paid tiers, they run **only** when the free pass found nothing, and they're capped per run (`MAX_ENRICHMENT_BUDGET`) so one search in Manhattan can't consume a credit balance.
+Booking a private dining room for a group of 30–200 people is a research problem disguised as a search problem. There is no API for "restaurant with a private room that seats 50." The real answer lives scattered across a dozen open browser tabs — a venue's own events page, a Yelp photo from three years ago, a phone call nobody's made yet — and every planner ends up rebuilding the same spreadsheet from scratch, with numbers of wildly different reliability sitting side by side with no way to tell them apart.
 
-### The five trust tiers
+The failure mode that actually hurts isn't "wrong restaurant." It's showing up with 60 people to a room that was never confirmed to hold more than 40.
 
-Every capacity and price figure carries one of these, and the price signal carries **its own** label rather than inheriting capacity's:
+## The solution
 
-| Tier | Means |
+Private Dining Finder runs a small discovery-and-verification pipeline instead of a single search box, and it never lets a guess look as trustworthy as a fact. Every capacity and price figure on the page is stamped with one of five trust tiers, and ranking is built so a confirmed number can never lose to a fabricated one just because the fabrication happens to fit better.
+
+- **Search** by address, headcount, commute time, mode, and room style — or just describe the event in plain English and let it fill the form in for review.
+- **Rank by real fit**, not proximity alone: commute, capacity fit, evidence quality, and style all factor into one score, and a venue that hasn't published a number can't outrank one that has.
+- **See the pipeline work.** A live readout shows what's actually happening during a search — sites fetched, results venue-confirmed — instead of a spinner.
+- **Close the loop on "needs a call."** Confirm a figure after actually calling a venue, and it flows straight into the shared catalog for every future search near that venue.
+- **Move from comparison to commitment.** Shortlist candidates, compare them side by side, pick one — then open a live event page where everyone attending states their allergies and dietary needs, and the host gets an AI-built roster to hand the kitchen.
+
+This is a research and coordination tool. **It never books, holds, or pays for anything** — every irreversible step (calling the venue, sending the order) stays a deliberate human action.
+
+## The trust tiers
+
+The core idea, made visible everywhere a number appears:
+
+| Tier | What it means |
 |---|---|
 | `confirmed_by_planner` | A human phoned the venue and reported the answer back into the shared catalog |
 | `verified` | Printed on the venue's own private-dining page |
@@ -30,41 +40,27 @@ Every capacity and price figure carries one of these, and the price signal carri
 | `ai_extracted` | Read from the venue's own wording by an LLM, not matched verbatim |
 | `unverified` | Not confirmed anywhere — needs a call |
 
-Ranking treats these as load-bearing, not decorative: capacity-fit credit is scaled by the tier, so a venue's *estimated* capacity can't outrank a *published* one just because the guess happens to sit closer to the headcount.
-
-A hand-curated set of real venues (`src/data/seed-venues.ts`) — researched from each venue's own private-events pages — is seeded separately as a permanent floor, so the three required scenarios always have solid, verified data even before the live pipeline has crawled an area.
-
-## What a planner can do
-
-- **Search** by address, headcount, max commute, mode (walk/drive), and room style, with a ranked "best overall fit" result list and a map.
-- **Describe the event in plain English** instead, e.g. *"40 for a standing reception near Salesforce Tower, 10 minute walk max"*. This fills the structured form in and hands it back for review — it never searches on values the planner hasn't seen.
-- **Watch the pipeline work.** During a search, a live readout reports what's actually happening (sites fetched, how many results ended up venue-confirmed) rather than a spinner.
-- **Confirm a figure after calling a venue**, pushing it into the shared catalog as `confirmed_by_planner` — this is how "needs a call" stops being a dead end.
-- **Draft an outreach email** pre-filled with headcount, date, and the specific room. Handed to the planner's own mail client or clipboard; the app never sends anything.
-- **Compare** two or three shortlisted venues side by side at `/compare`.
-- **Forward a read-only summary** to a decision-maker at `/summary/[workspace-code]`.
-- **Toggle a 3D map** for reading which building a venue is actually in.
-
-This is a research and recommendation tool only. Nothing in it books, holds, queues, or takes payment.
-
-## Company workspaces
-
-Rather than re-typing an address every search, a company gets a shareable code (e.g. `NOWADAYS-4F2A`) on first use. Anyone with the code sees the same saved office addresses, search history, and shortlist — no accounts or passwords, the code works like a shared link. See `src/lib/workspace.ts`.
+Ranking treats these as **load-bearing, not decorative**: capacity-fit credit is scaled by the tier, so an estimated capacity can never outrank a published one just because the guess sits closer to the headcount. See [`ARCHITECTURE.md`](./ARCHITECTURE.md#trust-tiers--ranking) for how the pipeline actually derives each tier.
 
 ## Tech stack
 
-- **Next.js 16** (App Router, Server Components, Server Actions) + **React 19**
-- **Tailwind CSS 4** + **shadcn/ui**
-- **Supabase** (Postgres, accessed via the service-role key server-side)
-- Geocoding: **OpenStreetMap Nominatim** (free, keyless)
-- Commute routing: **OpenRouteService** Matrix API (free tier) with an automatic straight-line fallback
-- Venue discovery: **Google Places (New)** (optional, paid) or **OpenStreetMap Overpass API** (free, keyless fallback)
-- JS-rendered scrape fallback: **Firecrawl** (optional, paid, budget-capped)
-- Prose capacity extraction + free-text query parsing: **xAI Grok** structured outputs (optional, paid, budget-capped)
-- Maps: **Leaflet** (2D) and **MapLibre GL JS** with **OpenFreeMap** vector tiles (3D — keyless, no registration)
-- Tests: **Vitest**
+| Layer | Choice |
+|---|---|
+| Framework | Next.js 16 (App Router, Server Components, Server Actions) + React 19 |
+| UI | Tailwind CSS 4 + shadcn/ui |
+| Database | Supabase (Postgres), accessed server-side via the service-role key |
+| Realtime | Supabase Realtime (event chat) |
+| Geocoding | OpenStreetMap Nominatim (free, keyless) |
+| Commute routing | OpenRouteService Matrix API (free tier), haversine fallback |
+| Venue discovery | Google Places API (New) (optional, paid) or OpenStreetMap Overpass (free fallback) |
+| JS-render fallback | Firecrawl (optional, paid, budget-capped) |
+| AI extraction / NL parsing | xAI Grok, structured outputs (optional, paid, budget-capped) |
+| Maps | Leaflet (2D) + MapLibre GL JS / OpenFreeMap (3D, keyless) |
+| Tests | Vitest |
 
-## Setup
+The app runs end-to-end with **zero paid API keys** — every external call degrades to a free, clearly-labeled fallback. See "Optional API keys" below.
+
+## Getting started
 
 ### 1. Install dependencies
 
@@ -74,7 +70,7 @@ npm install
 
 ### 2. Create a Supabase project
 
-Create a project at [supabase.com](https://supabase.com), then apply every migration in `supabase/migrations/` **in filename order** (`0001_init.sql` through `0007_shortlist_messages.sql` — the later ones add the `ai_extracted` and `confirmed_by_planner` trust tiers, menu/dietary trust columns, the confirmations table, and the per-venue shortlist chat). Either:
+Create a project at [supabase.com](https://supabase.com), then apply every migration in `supabase/migrations/` **in filename order** (`0001_init.sql` through `0010_event_dietary_flow.sql`). Either:
 
 - Paste each file into the Supabase Studio SQL editor and run them in order, **or**
 - Use the Supabase CLI: `npx supabase link --project-ref <your-project-ref>` then `npx supabase db push`
@@ -83,13 +79,11 @@ Create a project at [supabase.com](https://supabase.com), then apply every migra
 
 ### 3. Configure environment variables
 
-Copy `.env.example` to `.env.local` and fill in your Supabase project's URL, anon key, and service-role key (found under Project Settings → API).
-
 ```bash
 cp .env.example .env.local
 ```
 
-Every other key (`ORS_API_KEY`, `GOOGLE_PLACES_API_KEY`, `FIRECRAWL_API_KEY`, `XAI_API_KEY`) is optional — see "Optional API keys" below. `.env`, `.env.local`, and `.env*.local` are gitignored; only `.env.example` is tracked.
+Fill in your Supabase project's URL, anon key, and service-role key (Project Settings → API). Every other key is optional — see "Optional API keys" below. `.env*` files are gitignored; only `.env.example` is tracked.
 
 ### 4. Seed the fallback venues
 
@@ -97,7 +91,7 @@ Every other key (`ORS_API_KEY`, `GOOGLE_PLACES_API_KEY`, `FIRECRAWL_API_KEY`, `X
 npm run seed
 ```
 
-This geocodes and loads the curated venues (Carmine's, Dos Caminos, Perbacco, Hilton Hawaiian Village, etc.) that guarantee the 3 required scenarios have real data.
+Loads the curated venues (Carmine's, Dos Caminos, Perbacco, Hilton Hawaiian Village, etc.) that guarantee the 3 required scenarios have real, verified data before the live pipeline ever runs.
 
 ### 5. Run it
 
@@ -108,8 +102,6 @@ npm run dev
 Open [http://localhost:3000](http://localhost:3000), create a workspace, and search.
 
 ## Local development (no hosted Supabase project needed)
-
-The app was built and tested against a **local** Supabase instance via the Supabase CLI + Docker, which is the fastest way to develop without waiting on a hosted project:
 
 ```bash
 npx supabase init          # first time only
@@ -122,76 +114,61 @@ npm run dev
 
 ## Optional API keys
 
-The app runs with **zero paid API keys** — every external call has a free fallback — but accuracy improves with them:
-
 | Variable | Without it | With it |
 |---|---|---|
-| `ORS_API_KEY` | Commute time/distance is a straight-line (haversine) estimate with a route-factor correction and mode-specific average speed, clearly labeled "estimated" in the UI | Real walking/driving routes via [OpenRouteService](https://openrouteservice.org/dev/#/signup) (free tier, no credit card) |
-| `GOOGLE_PLACES_API_KEY` | Venue discovery uses the free OpenStreetMap Overpass API — fewer venues, thinner metadata, spottier website coverage | Richer discovery via Google Places (New) `searchNearby` |
-| `FIRECRAWL_API_KEY` | A venue whose private-dining content is rendered client-side comes back `unverified` ("needs a call") | Those pages are rendered and read, so real data isn't mislabeled because of a tooling gap |
-| `XAI_API_KEY` | Capacities written in prose ("our upstairs room comfortably hosts thirty") aren't captured, and the free-text search box is disabled with a note saying so | Adds the `ai_extracted` tier, cross-source confidence checking, and natural-language query parsing |
+| `ORS_API_KEY` | Commute time is a haversine estimate, labeled "estimated" | Real walking/driving routes via [OpenRouteService](https://openrouteservice.org/dev/#/signup) (free tier) |
+| `GOOGLE_PLACES_API_KEY` | Discovery uses the free OpenStreetMap Overpass API | Richer discovery + real venue photos via Google Places (New) |
+| `FIRECRAWL_API_KEY` | Client-rendered private-dining pages come back `unverified` | Those pages are rendered and read, not mislabeled by a tooling gap |
+| `XAI_API_KEY` | Prose capacities aren't captured; free-text search is disabled | Adds the `ai_extracted` tier, cross-source confidence checks, and NL query parsing |
 
-Both paid tiers only run when the free path found nothing, and both are capped per discovery run.
+Both paid tiers run **only** when the free path found nothing, and both are budget-capped per search.
 
 ## Testing the 3 required scenarios
 
-With the dev server running, search:
-
-1. **50 people, Times Square, NYC, under 20 min** — try `Times Square, New York, NY`
-2. **30 people, Salesforce Tower, SF, under 15 min** — try `415 Mission St, San Francisco, CA 94105`
-3. **200 people, reception style, Hilton Hawaiian Village, Waikiki, under 15 min walk** — try `Hilton Hawaiian Village, Honolulu, HI` and set style to "Reception / happy hour"
-
-There's also a scripted smoke test that exercises all 3 scenarios directly against the search/ranking logic and prints the results to the terminal (useful for verifying the backend without clicking through the UI):
+1. **50 people, Times Square, NYC, under 20 min** — search `Times Square, New York, NY`
+2. **30 people, Salesforce Tower, SF, under 15 min** — search `415 Mission St, San Francisco, CA 94105`
+3. **200 people, reception style, Hilton Hawaiian Village, Waikiki, under 15 min walk** — search `Hilton Hawaiian Village, Honolulu, HI`, style = "Reception / happy hour"
 
 ```bash
-npm run test:scenarios
+npm run test:scenarios   # runs all 3 scenarios directly against search/ranking, prints results
+npm test                  # unit tests (Vitest) — trust derivation, ranking, price signal, parsing, personas
 ```
 
-## Tests
+Unit tests can't prove an external API still behaves as documented, so there are scripts that hit the real services directly (network calls, cost API credits where a key is configured):
 
 ```bash
-npm test          # unit tests (Vitest) — trust derivation, ranking, price signal, scraper helpers, query parsing, personas
-npm run test:watch
+npx tsx scripts/verify-enrichment.ts
+npx tsx scripts/verify-nl-query.ts
+node --conditions=react-server --import tsx scripts/verify-flywheel.ts
+node --conditions=react-server --import tsx scripts/verify-dietary-summary.ts
+node --conditions=react-server --import tsx scripts/loadtest-density.ts
 ```
 
-The unit suite covers the logic that has to be right: which evidence earns which trust tier, that the smallest fitting room wins, that a planner-confirmed figure outranks a scraped one, that an estimated capacity can't outrank a published one, and that free-text parsing never invents a value it wasn't given.
+Two real defects (a ranking hole where a category-guessed capacity outranked a venue's own published figure, and a stale-prop bug in the dietary-roster button) were caught by these scripts and by walking the flow directly, not by the unit suite.
 
-Unit tests can't prove an external API still behaves as documented, so there are separate scripts that hit the real services. These make live network calls and cost API credits where a key is configured:
+## Known trade-offs
 
-```bash
-npx tsx scripts/verify-enrichment.ts   # Firecrawl + Grok tiers against real venue sites
-npx tsx scripts/verify-nl-query.ts     # free-text parsing, including sentences that omit fields
-node --conditions=react-server --import tsx scripts/verify-flywheel.ts     # confirmation round-trip through search + ranking
-node --conditions=react-server --import tsx scripts/loadtest-density.ts    # forces live discovery in dense areas, bypassing the cache
-```
-
-Both defects described at the end of `DECISIONS.md` were found by these scripts, not by the unit suite.
-
-## Known trade-offs / what I'd improve with more time
-
-`DECISIONS.md` is the full log of choices and trade-offs made while building this, including two real defects the load-test scripts caught. The short version:
-
-- **Photos are partial.** Four venues in the required NYC scenario have genuine photographs; the other 10 curated seed venues (SF, Waikiki) show an explicit "no photo found" rather than a stock placeholder, once one was tried and found more misleading than helpful (see `DECISIONS.md`). Auto-discovered venues pull a real Google Places photo automatically — this was blocked by a project billing/SKU restriction earlier on, since re-verified and confirmed resolved. The auto-crossfade photo tour is still not built: only the first photo per venue is currently stored, and widening that for an unproven payoff felt like speculative code rather than a real improvement.
-- **Capacity is estimated when a venue publishes none.** Those rooms are named "Capacity unconfirmed", labeled `unverified`, and annotated as estimated from venue category. It's honest on the card, but the guess still decides whether an unknown venue appears in a 200-person search at all. Kept because excluding them would drop real candidates worth calling; ranking no longer lets a guess outrank a published figure.
-- **No Supabase Auth.** The company-code model trades real authentication for zero-friction sharing, appropriate for a research tool with no sensitive data. A production version would add Supabase Auth (e.g. magic link matched to email domain) and scope RLS policies to `auth.uid()` instead of trusting the client-supplied company id.
-- **Discovery radius is a heuristic**, not the real routable isochrone — it's sized generously off the max-commute-minutes input so real routing doesn't miss borderline venues, then the actual per-venue commute is what's filtered on.
-- **Confirmations are trusted on sight.** Anyone with a workspace code can push a `confirmed_by_planner` figure into the shared catalog. Fine for a demo, and provenance is recorded, but a production version needs corroboration (or at least moderation) before one workspace's claim outranks a venue's own published number.
-- **The landing-page preview is cached for 6 hours**, so it reflects a real run from up to 6 hours ago rather than that instant. The timestamp is shown.
+- **Photos are partial.** Auto-discovered venues pull real Google Places photos; a handful of curated seed venues show an honest "no photo found" rather than a stock placeholder, once one was tried and found more misleading than helpful.
+- **Capacity is estimated when a venue publishes none**, labeled `unverified` and named "Capacity unconfirmed" — kept because excluding unknown venues entirely would drop real candidates worth calling, and ranking no longer lets that guess outrank a published figure.
+- **No real authentication.** A shared workspace code trades real auth for zero-friction sharing — appropriate for a research tool with no sensitive data, not for production as-is.
+- **Confirmations are trusted on sight.** Anyone with a workspace code can push a `confirmed_by_planner` figure into the shared catalog; provenance is recorded, but there's no corroboration step yet.
 
 ## Project structure
 
 ```
-src/lib/geo/               geocoding + commute time (Nominatim, OpenRouteService, haversine fallback)
+src/lib/geo/               geocoding + commute time
 src/lib/discovery/         live discovery, scraping, JS-render + LLM tiers, trust-labeling, caching
-src/lib/ranking.ts         "best overall fit" scoring (commute, capacity, trust, style match)
-src/lib/trust-labels.ts    the single source of planner-facing wording for every trust tier
-src/lib/search.ts          a search end-to-end, as three composable stages
-src/lib/search-stages.ts   the same search as streamed stages, for the live progress readout
-src/lib/nl-query.ts        free-text query -> structured form parameters
-src/lib/personas.ts        persona-aware form defaults
-src/lib/price-signal.ts    price signal + cost-per-person, with their own trust labels
+src/lib/ranking.ts         "best overall fit" scoring
+src/lib/dietary-summary.ts AI-built dietary roster from the event chat thread
 src/lib/workspace.ts       company-code workspace (create/join, cookie-based)
+src/app/                   routes (search, shortlist, compare, venue, event, summary)
 src/data/                  curated fallback venue data
 supabase/migrations/       database schema (apply in filename order)
 scripts/                   seed, scenario smoke test, and live-service verification scripts
 ```
+
+See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for the full system design, data flow, and schema.
+
+---
+
+Built for Nowadays' "Private Dining Finder" take-home challenge.

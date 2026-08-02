@@ -108,10 +108,18 @@ export type ShortlistItemRow = {
   search_id: string | null;
   added_by: string | null;
   note: string | null;
+  is_selected: boolean;
   created_at: string;
 }
 
 export type ShortlistAttachmentType = "image" | "video";
+
+/**
+ * 'planning' is the colleagues choosing a venue; 'event' is everyone actually
+ * attending, answering the host's dietary question. Same table, different
+ * audience — see supabase/migrations/0010_event_dietary_flow.sql.
+ */
+export type ShortlistMessageChannel = "planning" | "event";
 
 export type ShortlistMessageRow = {
   id: string;
@@ -122,6 +130,51 @@ export type ShortlistMessageRow = {
   attachment_url: string | null;
   attachment_type: ShortlistAttachmentType | null;
   is_highlight_reel: boolean;
+  channel: ShortlistMessageChannel;
+  created_at: string;
+}
+
+/** How firm a stated dietary need is, which changes how a kitchen must treat it. */
+export type DietaryNeedKind = "allergy" | "intolerance" | "preference" | "unclear";
+
+/**
+ * Severity is per item rather than per person on purpose: "no pork for me, and
+ * I got allergy with peanut" is one message stating two different things, and
+ * flattening it to a single severity either invents an allergy or hides one.
+ */
+export type DietaryNeed = {
+  item: string;
+  kind: DietaryNeedKind;
+};
+
+export type DietaryPerson = {
+  name: string;
+  needs: DietaryNeed[];
+  /** The attendee's own words, so the host can always check the extraction. */
+  quote: string;
+};
+
+/**
+ * Structured dietary roster extracted from an event thread. Stored as jsonb on
+ * dietary_summaries.summary.
+ */
+export type DietarySummary = {
+  people: DietaryPerson[];
+  /** Requirement → how many attendees stated it, for ordering in bulk. */
+  aggregate: { requirement: string; count: number }[];
+  /** Messages the model could not confidently read, quoted verbatim. */
+  unclear: string[];
+  /** A short paragraph the host can send to the venue as-is. */
+  orderNote: string;
+};
+
+export type DietarySummaryRow = {
+  id: string;
+  shortlist_item_id: string;
+  company_id: string;
+  summary: DietarySummary;
+  message_count: number;
+  generated_by: string | null;
   created_at: string;
 }
 
@@ -269,6 +322,26 @@ export type Database = {
           },
           {
             foreignKeyName: "venue_confirmations_company_id_fkey";
+            columns: ["company_id"];
+            isOneToOne: false;
+            referencedRelation: "companies";
+            referencedColumns: ["id"];
+          },
+        ]
+      >;
+      dietary_summaries: TableDef<
+        DietarySummaryRow,
+        OptionalNullable<Omit<DietarySummaryRow, "id" | "created_at">> & { id?: string },
+        [
+          {
+            foreignKeyName: "dietary_summaries_shortlist_item_id_fkey";
+            columns: ["shortlist_item_id"];
+            isOneToOne: false;
+            referencedRelation: "shortlist_items";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "dietary_summaries_company_id_fkey";
             columns: ["company_id"];
             isOneToOne: false;
             referencedRelation: "companies";

@@ -1,11 +1,13 @@
 import Image from "next/image";
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { PartyPopper } from "lucide-react";
 import { getCurrentCompany } from "@/lib/workspace";
 import { createServiceClient } from "@/lib/supabase/server";
 import { addToShortlistAction, removeFromShortlistAction } from "@/app/actions";
 import { TrustBadge } from "@/components/trust-badge";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
   Carousel,
@@ -15,9 +17,9 @@ import {
   CarouselPrevious,
 } from "@/components/ui/carousel";
 import { VenueConfirmationCard } from "@/components/venue-confirmation-card";
-import { ShortlistChat } from "@/components/shortlist-chat";
-import { ShortlistHighlightReel } from "@/components/shortlist-highlight-reel";
+import { CopyEventLink } from "@/components/copy-event-link";
 import { BackToSearch } from "@/components/back-to-search";
+import { cn } from "@/lib/utils";
 import type { VenueConfirmationRow, VenuePhotoRow, VenueRoomRow, VenueRow } from "@/lib/supabase/types";
 
 type VenuePageProps = {
@@ -45,16 +47,10 @@ export default async function VenuePage({ params }: VenuePageProps) {
 
   const { data: shortlisted } = await supabase
     .from("shortlist_items")
-    .select("id, note, added_by")
+    .select("id, note, added_by, is_selected")
     .eq("company_id", company.id)
     .eq("venue_id", id)
     .maybeSingle();
-
-  const { data: shortlistMessages } = shortlisted
-    ? await supabase.from("shortlist_messages").select("*").eq("shortlist_item_id", shortlisted.id).order("created_at", { ascending: true })
-    : { data: null };
-
-  const latestHighlightReel = shortlistMessages?.findLast((m) => m.is_highlight_reel) ?? null;
 
   // Not filtered by company: confirmations are facts about the venue that any
   // workspace contributed, and seeing who confirmed what is the point.
@@ -109,17 +105,45 @@ export default async function VenuePage({ params }: VenuePageProps) {
 
       {typedVenue.description && <p className="text-sm leading-relaxed">{typedVenue.description}</p>}
 
+      {/* No discussion thread here while still comparing — a candidate's
+          detail page is for reading facts about it, not for chatting.
+          A live chat only makes sense once there's one venue and an actual
+          headcount of attendees to have it with, which is why it lives on
+          /event/[code] instead, gated behind is_selected. */}
       {shortlisted && (
-        <section className="flex flex-col gap-3">
-          <ShortlistHighlightReel
-            shortlistItemId={shortlisted.id}
-            venueName={typedVenue.name}
-            initialReel={latestHighlightReel}
-          />
-          <div>
-            <h2 className="mb-2 font-medium">Team discussion</h2>
-            <ShortlistChat shortlistItemId={shortlisted.id} initialMessages={shortlistMessages ?? []} />
-          </div>
+        <section
+          className={cn(
+            "flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-4",
+            shortlisted.is_selected ? "border-emerald-600/25 bg-emerald-50/60" : "bg-muted/40"
+          )}
+        >
+          {shortlisted.is_selected ? (
+            <>
+              <div>
+                <p className="flex items-center gap-1.5 text-xs font-medium text-emerald-700">
+                  <PartyPopper className="size-3.5" />
+                  Chosen for the event
+                </p>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  Send attendees the invite link so they can tell you about allergies and dietary needs.
+                </p>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <CopyEventLink code={company.code} variant="default" />
+                <Link href={`/event/${company.code}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
+                  Open event page
+                </Link>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Shortlisted{shortlisted.added_by ? ` by ${shortlisted.added_by}` : ""}. Choose it from the{" "}
+              <Link href="/shortlist" className="underline hover:text-foreground">
+                shortlist
+              </Link>{" "}
+              to open a chat for everyone attending.
+            </p>
+          )}
         </section>
       )}
 

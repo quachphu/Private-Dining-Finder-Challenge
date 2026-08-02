@@ -116,6 +116,10 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
                     Returning to a workspace you or a teammate already set up? Enter its code above — it&apos;s shown at
                     the top of the app once inside, and works from any device.
                   </p>
+                  <p className="rounded-lg bg-muted/60 p-2.5 text-xs text-muted-foreground">
+                    Were you sent a link to see dinner details or say what you can&apos;t eat? Open that link directly
+                    instead — you don&apos;t need to join a workspace for that.
+                  </p>
                 </form>
               </TabsContent>
             </Tabs>

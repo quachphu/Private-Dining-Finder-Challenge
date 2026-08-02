@@ -29,6 +29,13 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+hs_err_pid*.log
+*.log
+
+# editor/OS
+.vscode/
+.idea/
+Thumbs.db
 
 # env files (can opt-in for committing if needed)
 .env*
