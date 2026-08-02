@@ -4,8 +4,9 @@ Find a private dining room that actually fits your group, with real evidence beh
 
 You give it an address, a headcount, and a max commute time. It gives you back a ranked list of private dining venues, and next to every capacity and price figure it tells you exactly how much you should trust that number.
 
-📹 Demo video: [youtu.be/Fx1vd5Y7TZE](https://youtu.be/Fx1vd5Y7TZE)
-📊 Pitch deck: [Google Slides](https://docs.google.com/presentation/d/1WdNsidrCnGDCRgebB9BCLryj4KqDXmhgPk-UHxAW6jg/edit?usp=sharing)
+- Demo video: [youtu.be/Fx1vd5Y7TZE](https://youtu.be/Fx1vd5Y7TZE)
+
+- Pitch deck: [Google Slides](https://docs.google.com/presentation/d/1WdNsidrCnGDCRgebB9BCLryj4KqDXmhgPk-UHxAW6jg/edit?usp=sharing)
 
 ---
 
@@ -31,13 +32,13 @@ This is a research and coordination tool, not a booking system. It never books, 
 
 This is really the whole idea, made visible everywhere a number shows up:
 
-| Tier | What it means |
-|---|---|
+| Tier                   | What it means                                                                          |
+| ---------------------- | -------------------------------------------------------------------------------------- |
 | `confirmed_by_planner` | Someone actually called the venue and reported the answer back into the shared catalog |
-| `verified` | Printed on the venue's own private dining page |
-| `likely` | The venue confirms private events but doesn't publish a number |
-| `ai_extracted` | Read from the venue's own wording by an LLM, not matched word for word |
-| `unverified` | Not confirmed anywhere. Needs a call |
+| `verified`             | Printed on the venue's own private dining page                                         |
+| `likely`               | The venue confirms private events but doesn't publish a number                         |
+| `ai_extracted`         | Read from the venue's own wording by an LLM, not matched word for word                 |
+| `unverified`           | Not confirmed anywhere. Needs a call                                                   |
 
 Ranking actually uses these tiers, they're not just decoration. Capacity fit credit is scaled by the tier, so an estimated capacity can't outrank a published one just because the guess happens to land closer to the headcount.
 
@@ -57,19 +58,19 @@ Everything discovery finds gets written to Postgres, so the next search nearby r
 
 ## Tech stack
 
-| Layer | Choice |
-|---|---|
-| Framework | Next.js 16 (App Router, Server Components, Server Actions) + React 19 |
-| UI | Tailwind CSS 4 + shadcn/ui |
-| Database | Supabase (Postgres), accessed server side via the service role key |
-| Realtime | Supabase Realtime (event chat) |
-| Geocoding | OpenStreetMap Nominatim (free, keyless) |
-| Commute routing | OpenRouteService Matrix API (free tier), haversine fallback |
-| Venue discovery | Google Places API (New) (optional, paid) or OpenStreetMap Overpass (free fallback) |
-| JS render fallback | Firecrawl (optional, paid, budget capped) |
-| AI extraction / NL parsing | xAI Grok, structured outputs (optional, paid, budget capped) |
-| Maps | Leaflet (2D) + MapLibre GL JS / OpenFreeMap (3D, keyless) |
-| Tests | Vitest |
+| Layer                      | Choice                                                                             |
+| -------------------------- | ---------------------------------------------------------------------------------- |
+| Framework                  | Next.js 16 (App Router, Server Components, Server Actions) + React 19              |
+| UI                         | Tailwind CSS 4 + shadcn/ui                                                         |
+| Database                   | Supabase (Postgres), accessed server side via the service role key                 |
+| Realtime                   | Supabase Realtime (event chat)                                                     |
+| Geocoding                  | OpenStreetMap Nominatim (free, keyless)                                            |
+| Commute routing            | OpenRouteService Matrix API (free tier), haversine fallback                        |
+| Venue discovery            | Google Places API (New) (optional, paid) or OpenStreetMap Overpass (free fallback) |
+| JS render fallback         | Firecrawl (optional, paid, budget capped)                                          |
+| AI extraction / NL parsing | xAI Grok, structured outputs (optional, paid, budget capped)                       |
+| Maps                       | Leaflet (2D) + MapLibre GL JS / OpenFreeMap (3D, keyless)                          |
+| Tests                      | Vitest                                                                             |
 
 The app runs end to end with zero paid API keys. Every external call degrades to a free, clearly labeled fallback. See "Optional API keys" below.
 
@@ -127,12 +128,12 @@ npm run dev
 
 ## Optional API keys
 
-| Variable | Without it | With it |
-|---|---|---|
-| `ORS_API_KEY` | Commute time is a haversine estimate, labeled "estimated" | Real walking/driving routes via [OpenRouteService](https://openrouteservice.org/dev/#/signup) (free tier) |
-| `GOOGLE_PLACES_API_KEY` | Discovery uses the free OpenStreetMap Overpass API | Richer discovery and real venue photos via Google Places (New) |
-| `FIRECRAWL_API_KEY` | Client rendered private dining pages come back `unverified` | Those pages get rendered and read instead of mislabeled from a tooling gap |
-| `XAI_API_KEY` | Prose capacities aren't captured, and free text search is disabled | Adds the `ai_extracted` tier, cross source confidence checks, and NL query parsing |
+| Variable                | Without it                                                         | With it                                                                                                   |
+| ----------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `ORS_API_KEY`           | Commute time is a haversine estimate, labeled "estimated"          | Real walking/driving routes via [OpenRouteService](https://openrouteservice.org/dev/#/signup) (free tier) |
+| `GOOGLE_PLACES_API_KEY` | Discovery uses the free OpenStreetMap Overpass API                 | Richer discovery and real venue photos via Google Places (New)                                            |
+| `FIRECRAWL_API_KEY`     | Client rendered private dining pages come back `unverified`        | Those pages get rendered and read instead of mislabeled from a tooling gap                                |
+| `XAI_API_KEY`           | Prose capacities aren't captured, and free text search is disabled | Adds the `ai_extracted` tier, cross source confidence checks, and NL query parsing                        |
 
 Both paid tiers only run when the free path found nothing, and both are budget capped per search.
 
